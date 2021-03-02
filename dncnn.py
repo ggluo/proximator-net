@@ -2,7 +2,7 @@
 resnet denoiser
 """
 
-from . import nn
+import nn
 import tensorflow.compat.v1 as tf
 tf.disable_eager_execution()
 
