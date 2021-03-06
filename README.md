@@ -16,3 +16,12 @@
 6. [ ] organize codes
 7. [ ] training the model with fastMRI dataset
 8. [ ] look into  the step of iteration
+
+Template IEEE TMI 
+https://ieeexplore.ieee.org/document/8579232
+
+# By Mar 11
+1. [ ] fix the proximator
+2. [ ] redesign the structure of network, increase number of layers, use self-attention
+3. [ ] rerun the metrics
+4. [ ] prepare modl, varnet vae
