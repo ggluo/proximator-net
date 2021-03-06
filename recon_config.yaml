@@ -1,0 +1,25 @@
+### model
+model_path: ./save/proximator_l2
+ckpt_name: proximator_l2_450
+batch_size: 1
+
+### acquisition
+nx: 256
+ny: 256
+nr_original_coils: 16
+nr_comb_coils: 8
+
+### recon
+spokes: 40
+sense_iter: 50
+max_iter: 60
+inner_iter: 1
+step_size: 10
+dropout: 0.3
+rand_shift: False
+sense_step_size: 1
+bart_l1_lambda: 0.0005
+GA: 7
+### save and gpu
+gpu_id: '3'
+expr_name: test1
