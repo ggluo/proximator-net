@@ -15,3 +15,4 @@
 5. [ ] To improve metrics, try different network structure, such as replacing dncnn with unet, adding kernel method layer or add self-attention layer.
 6. [ ] organize codes
 7. [ ] training the model with fastMRI dataset
+8. [ ] look into  the step of iteration

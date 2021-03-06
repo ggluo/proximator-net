@@ -37,7 +37,7 @@ sess = tf.Session(config=config_proto)
 saver.restore(sess, os.path.join(recon_config['model_path'], recon_config['ckpt_name']))
 
 
-def recon(kspace_path):
+def recon(kspace_path, mask):
     ksp = loadmat(kspace_path)['kspace']
     rss = loadmat(kspace_path)['rss']
 
@@ -74,10 +74,10 @@ def recon(kspace_path):
         img_k = sense_kernel_cart(zero_filled, img_k)
         
         img_k, scalar = utils.scale_down(img_k)
-        #img_k = img_k+ 0.001*np.random.randn(256, 256)
+        img_k = img_k+ 0.001*np.random.randn(256, 256)
         tmp = img_k
-        #img_k = tmp - 0.01*(np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))- tmp)
-        img_k = img_k*0.8 + 0.2*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
+        img_k = tmp - 0.01*(np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))- tmp)
+        img_k = img_k*0.7 + 0.3*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
 
         img_k = utils.scale_up(img_k, scalar)
         #utils.save_img(abs(img_k), save_path+'/img_k_'+str(i), np.min(abs(img_k)), np.max(abs(img_k)))
@@ -92,11 +92,18 @@ def recon(kspace_path):
     print("psnr_net %fdB"% psnr_net)
     return psnr_l1, psnr_net, ssim_l1, ssim_net
 
+compute_metrics = False
+if compute_metrics:
+    test_files = utils.list_data_sys(model_config['testing_data_path'], model_config['dataset_suffix'], ex_pattern='resam')
+    metrics = []
+    for path in tqdm(test_files):
+        mask = utils.gen_mask_1D(ratio=0.3, center=22)
+        metrics.append(recon(path, mask))
 
-test_files = utils.list_data_sys(model_config['testing_data_path'], model_config['dataset_suffix'], ex_pattern='resam')
-metrics = []
-for path in tqdm(test_files):
-    metrics.append(recon(path))
+mask = utils.gen_mask_1D(ratio=0.3, center=22)
+kspace_path = '/media/jason/brain_mat/brain_mat/test/LI, Dahui_T2S_1.mat'
+a = recon(kspace_path, mask)
+
 #a = recon(kspace_path = '/media/jason/brain_mat/brain_mat/test/LI, Dahui_T2S_1.mat')
 #print("psnr_l1 %fdB"% psnr_l1)
 #print("psnr_net %fdB"% psnr_net)
