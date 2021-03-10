@@ -3,6 +3,7 @@ import numpy as np
 from tf_slim import add_arg_scope
 import math
 from tf_slim.layers import layer_norm
+import tensorflow as tfw
 
 def int_shape(x):
     return list(map(int, x.get_shape()))
@@ -226,6 +227,19 @@ def dense(x_, num_units, nonlinearity=None, init_scale=1., counters={}, init=Fal
             x = nonlinearity(x)
 
         return x
+
+
+def sele_attention(inputs, attention_size):
+    hidden_size = inputs.shape[2].value
+    w_omega = tfw.Variable(tfw.random_normal([hidden_size, attention_size], stddev=0.1))
+    b_omega = tfw.Variable(tfw.random_normal([attention_size], stddev=0.1))
+    u_omega = tfw.Variable(tfw.random_normal([attention_size], stddev=0.1))
+    with tfw.name_scope('v'):
+        v = tfw.tanh(tfw.tensordot(inputs, w_omega, axes=1) + b_omega)
+    vu = tfw.tensordot(v, u_omega, axes=1, name='vu')  
+    alphas = tfw.nn.softmax(vu, name='alphas')  
+    output = tfw.reduce_sum(inputs * tfw.expand_dims(alphas, -1), 1)
+    return output
 
 @add_arg_scope
 def conv2d(x_, num_filters, filter_size=[3,3], stride=[1,1], pad='SAME', nonlinearity=None, init_scale=1., counters={}, init=False, ema=None, **kwargs):
