@@ -401,3 +401,18 @@ def down_right_shifted_deconv2d(x, num_filters, filter_size=[2,2], stride=[1,1],
     x = deconv2d(x, num_filters, filter_size=filter_size, pad='VALID', stride=stride, **kwargs)
     xs = int_shape(x)
     return x[:,:(xs[1]-filter_size[0]+1):,:(xs[2]-filter_size[1]+1),:]
+
+@add_arg_scope
+def self_attention(x, qk_chns, v_chns, **kwargs):
+    shape = int_shape(x)
+    query_conv = tf.reshape(nin(x, qk_chns, nonlinearity=None, scope='global_attention'), (shape[0], shape[1]*shape[2], -1))
+    key_conv = tf.reshape(nin(x, qk_chns, nonlinearity=None, scope='global_attention'), (shape[0], shape[1]*shape[2], -1))
+    value_conv = tf.reshape(nin(x, v_chns, nonlinearity=None, scope='global_attention'), (shape[0], shape[1]*shape[2], -1))
+    energy = tf.einsum("bnf,bjf->bnj", query_conv, key_conv)
+    attention_map = tf.nn.softmax(energy, axis=-1)
+    out = tf.einsum("bnf,bnj->bjf", value_conv, attention_map)
+
+    if shape[-1] != v_chns:
+        x = nin(x, v_chns, nonlinearity=None, scope='global_attention')
+        
+    return tf.reshape(out, shape[:-1]+[v_chns]) + x
