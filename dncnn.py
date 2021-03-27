@@ -18,17 +18,17 @@ class dncnn():
         self.counters    = {}
         self.model       = tf.make_template('model', self.forward)
 
-    def body(self, x, h, init=False):
+    def body(self, x, h, nr_classes, nonlinearity, init=False):
         lys = []
         with arg_scope([nn.conv2d], init=init, counters = self.counters):
 
             # pre-layer
             ######
-            lys.append(nn.conv2d(x, self.nr_filters, self.filter_size, nonlinearity=None))
-            #layer_out = nn.cond_instance_norm_plus(x, h)
-            #layer_out = nonlinearity(layer_out)
+            l_o = nn.conv2d(x, self.nr_filters, self.filter_size, nonlinearity=None))
+            l_o = nn.cond_instance_norm_plus(l_o, h, nr_classes)
+            l_o = nonlinearity(l_o)
             ######
-            
+            lys.append(l_o)
             #
             for _ in range(self.nr_layers):
                 lys.append(nn.conv2d(lys[-1], self.nr_filters, self.filter_size))
@@ -36,7 +36,7 @@ class dncnn():
             lys.append(nn.conv2d(lys[-1], self.chns, self.filter_size, nonlinearity=None))
             return x - lys[-1]
     
-    def forward(self, x, init=False):
-        out = self.body(x, init)
+    def forward(self, x, h, nr_classes, nonlinearity, init=False):
+        out = self.body(x, h, nr_classes, nonlinearity, init)
         self.counters = {}
         return out

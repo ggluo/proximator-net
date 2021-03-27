@@ -61,18 +61,20 @@ loss_test = []
 logits = []
 logits_test = []
 l2_reg = []
+
+nonlinearity = 
 # create tower
 for i in range(config['nr_gpu']):
     with tf.device('/gpu:%d'%i):
-        
+        # TODO h, nr_classes, nonlinear
         # train
-        logits.append(ins_proximator.forward(xs[i]))
+        logits.append(ins_proximator.forward(xs[i], h, config['nr_classes'], nonlinearity))
         l2_reg.append(tf.concat(tf.gradients(logits[-1], xs[i]), axis=0))
         loss.append(tf.reduce_mean(tf.math.square(logits[-1]-xs_clean[i]))+config['sigma']*config['sigma']*tf.reduce_mean(tf.math.square(tf.stop_gradient(l2_reg[-1]))))
         grads.append(tf.gradients(loss[-1], all_params, colocate_gradients_with_ops=True))
 
         # test
-        logits_test.append(ins_proximator.forward(xs[i]))
+        logits_test.append(ins_proximator.forward(xs[i], h, config['nr_classes'], nonlinearity))
         loss_test.append(tf.reduce_mean(tf.math.square(logits_test[-1]-xs_clean[i])))
 
 # average loss

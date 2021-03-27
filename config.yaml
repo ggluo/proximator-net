@@ -24,6 +24,7 @@ nr_thread: 1
 rand_scalor: 0.8
 mu: 0.0
 sigma: 0.03
+nr_classes: 2
 
 ### gpu
 nr_gpu: 3
