@@ -138,7 +138,7 @@ def noise(mu, sigma, shape):
     """
     return np.random.normal(mu, sigma, shape).astype(np.float32)
 
-def bart(nargout, cmd, *args):
+def bart(nargout, cmd, return_str=False, *args):
     """
     call bart from system command line
     """
