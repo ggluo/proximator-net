@@ -319,3 +319,37 @@ def self_attention(x, qk_chns, v_chns, **kwargs):
         x = nin(x, v_chns, nonlinearity=None, scope='global_attention')
         
     return tf.reshape(out, shape[:-1]+[v_chns]) + x
+
+@add_arg_scope
+def cond_instance_norm_plus(x, h, nr_classes, counters=[], **kwargs):
+    """
+    Adjusted conditional instance normalization
+
+    y is the index of classes
+    """
+    if 'scope' in kwargs.keys():
+        name = get_name(kwargs['scope'], counters)
+    else:
+        name = get_name('cond_batch_norm', counters)
+
+    stop_grad = False
+    if 'stop_grad' in kwargs.keys():
+        stop_grad = kwargs['stop_grad']
+
+    in_shape = int_shape(x)
+
+    with tf.variable_scope(name):
+        gamma = get_var_maybe_avg(name+'_gamma', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+                              initializer=tf.constant_initializer(1.), trainable=True)
+        beta = get_var_maybe_avg(name+'_beta', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+                                initializer=tf.constant_initializer(0.), trainable=True)
+        alpha = get_var_maybe_avg(name+'_alpha', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+                                initializer=tf.constant_initializer(0.), trainable=True)
+        mean, variance = tf.nn.moments(x, [1, 2], keep_dims=True)
+        cm, cvar = tf.nn.moments(mean, [-1], keep_dims=True)
+        adjusted_mean = tf.nn.batch_normalization(mean, cm, cvar, offset=None, scale=None, variance_epsilon=1e-12, name='adjust_norm')
+        offset = tf.gather(beta, h, axis=0)[:, tf.newaxis, tf.newaxis, :]
+        scale = tf.gather(beta, h, axis=0)[:, tf.newaxis, tf.newaxis, :]
+        out = tf.nn.batch_normalization(x, mean, variance, offset=offset, scale=scale, variance_epsilon=1e-12, name='instancenorm')
+        out = out + adjusted_mean*tf.gather(alpha, h, axis=0)[:, tf.newaxis, tf.newaxis, :]
+        return out
