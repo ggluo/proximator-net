@@ -3,6 +3,7 @@ import numpy as np
 from tf_slim import add_arg_scope
 import math
 from tf_slim.layers import layer_norm
+import tensorflow as tfw
 
 def int_shape(x):
     return list(map(int, x.get_shape()))
@@ -38,19 +39,6 @@ def concat_elu(x):
     """ like concatenated ReLU (http://arxiv.org/abs/1603.05201), but then with ELU """
     axis = len(x.get_shape())-1
     return tf.nn.elu(tf.concat([x, -x], axis))
-
-def log_sum_exp(x):
-    """ numerically stable log_sum_exp implementation that prevents overflow """
-    axis = len(x.get_shape())-1
-    m = tf.reduce_max(x, axis)
-    m2 = tf.reduce_max(x, axis, keepdims=True)
-    return m + tf.log(tf.reduce_sum(tf.exp(x-m2), axis))
-
-def log_prob_from_logits(x):
-    """ numerically stable log_softmax implementation that prevents overflow """
-    axis = len(x.get_shape())-1
-    m = tf.reduce_max(x, axis, keepdims=True)
-    return x - m - tf.log(tf.reduce_sum(tf.exp(x-m), axis, keepdims=True))
 
 def get_var_maybe_avg(var_name, ema=None, **kwargs):
     ''' utility for retrieving polyak averaged params '''
@@ -94,59 +82,6 @@ def get_name(layer_name, counters):
     counters[layer_name] += 1
     return name
 
-@add_arg_scope
-def tf_layer_norm(x, counters={}, **kwargs):
-
-    if 'scope' in kwargs.keys():
-        name = get_name(kwargs['scope'], counters)
-    else:
-        name = get_name('layer_norm', counters)
-
-    if 'debug' in kwargs.keys():
-        if kwargs['debug']:
-            print(name)
-    
-    with tf.variable_scope(name):
-        return layer_norm(x, scope=name)
-
-
-@add_arg_scope
-def nn_layer_norm(x,
-               filters=None,
-               epsilon=1e-6,
-               counters={},
-               ema=None,
-               **kwargs):
-    if filters is None:
-        filters = int_shape(x)[-1]
-
-    
-    if 'scope' in kwargs.keys():
-        name = get_name(kwargs['scope'], counters)
-    else:
-        name = get_name('layer_norm', counters)
-
-    if 'debug' in kwargs.keys():
-        if kwargs['debug']:
-            print(name)
-
-    with tf.variable_scope(name):
-        
-        scale = get_var_maybe_avg('scale', shape=[filters], dtype=tf.float32,
-                                  initializer=tf.ones_initializer(), trainable=True)
-        bias = get_var_maybe_avg('bias', shape=[filters], dtype=tf.float32,
-                                  initializer=tf.zeros_initializer(), trainable=True)
-
-        epsilon, scale, bias = [cast_like(t, x) for t in [epsilon, scale, bias]]
-
-        mean = tf.reduce_mean(x, axis=[-1], keepdims=True)
-        variance = tf.reduce_mean(
-            tf.squared_difference(x, mean), axis=[-1], keepdims=True)
-        norm_x = (x - mean) * tf.rsqrt(variance + epsilon)
-
-        output = norm_x * scale + bias
-
-    return output
 
 @add_arg_scope
 def batch_normalization(x, is_training=True, counters={}, **kwargs):
@@ -162,21 +97,6 @@ def batch_normalization(x, is_training=True, counters={}, **kwargs):
 
     with tf.variable_scope(name):
         return tf.layers.batch_normalization(x, is_training)
-
-
-@add_arg_scope
-def tf_dense(x, units, counters={}, **kwargs):
-    if 'scope' in kwargs.keys():
-        name = get_name(kwargs['scope'], counters)
-    else:
-        name = get_name('tf_dense', counters)
-
-    if 'debug' in kwargs.keys():
-        if kwargs['debug']:
-            print(name)
-
-    with tf.variable_scope(name):
-        return tf.layers.dense(x, units, use_bias=False)
 
 @add_arg_scope
 def dense(x_, num_units, nonlinearity=None, init_scale=1., counters={}, init=False, use_bias=True, ema=None, **kwargs):
@@ -226,6 +146,19 @@ def dense(x_, num_units, nonlinearity=None, init_scale=1., counters={}, init=Fal
             x = nonlinearity(x)
 
         return x
+
+
+def sele_attention(inputs, attention_size):
+    hidden_size = inputs.shape[2].value
+    w_omega = tfw.Variable(tfw.random_normal([hidden_size, attention_size], stddev=0.1))
+    b_omega = tfw.Variable(tfw.random_normal([attention_size], stddev=0.1))
+    u_omega = tfw.Variable(tfw.random_normal([attention_size], stddev=0.1))
+    with tfw.name_scope('v'):
+        v = tfw.tanh(tfw.tensordot(inputs, w_omega, axes=1) + b_omega)
+    vu = tfw.tensordot(v, u_omega, axes=1, name='vu')  
+    alphas = tfw.nn.softmax(vu, name='alphas')  
+    output = tfw.reduce_sum(inputs * tfw.expand_dims(alphas, -1), 1)
+    return output
 
 @add_arg_scope
 def conv2d(x_, num_filters, filter_size=[3,3], stride=[1,1], pad='SAME', nonlinearity=None, init_scale=1., counters={}, init=False, ema=None, **kwargs):
@@ -324,66 +257,99 @@ def nin(x, num_units, use_bias=True, nonlinearity=None, **kwargs):
         x = nonlinearity(x)
     return tf.reshape(x, s[:-1]+[num_units])
 
-''' meta-layer consisting of multiple base layers '''
+@add_arg_scope
+def instance_norm(x, counters={}, **kwargs):
+
+    if 'scope' in kwargs.keys():
+        name = get_name(kwargs['scope'], counters)
+    else:
+        name = get_name('instance_norm', counters)
+
+    stop_grad = False 
+    if 'stop_grad' in kwargs.keys():
+        stop_grad = kwargs['stop_grad']
+
+    in_shape = int_shape(x)
+    
+    with tf.variable_scope(name):
+        gamma = get_var_maybe_avg(name+'_gamma', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+                              initializer=tf.constant_initializer(1.), trainable=True)
+        beta = get_var_maybe_avg(name+'_beta', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+                                initializer=tf.constant_initializer(0.), trainable=True)
+        mean, variance = tf.nn.moments(x, [1, 2], keep_dims=True)
+        out = tf.nn.batch_normalization(x, mean, variance, offset=beta, scale=gamma, variance_epsilon=1e-12, name='instancenorm')
+        return out
 
 @add_arg_scope
-def gated_resnet(x, a=None, h=None, nonlinearity=concat_elu, conv=conv2d, init=False, counters={}, ema=None, dropout_p=0., **kwargs):
-    xs = int_shape(x)
-    num_filters = xs[-1]
-    
-    c1 = conv(nonlinearity(x), num_filters)
-    if a is not None: # add short-cut connection if auxiliary input 'a' is given
-        c1 += nin(nonlinearity(a), num_filters)
-    c1 = nonlinearity(c1)
-    if dropout_p > 0:
-        c1 = tf.nn.dropout(c1, keep_prob=1. - dropout_p)
-    
-    c2 = conv(c1, num_filters * 2, init_scale=0.1)
+def layer_norm(x, counters={}, **kwargs):
 
-    # add projection of h vector if included: conditional generation
+    if 'scope' in kwargs.keys():
+        name = get_name(kwargs['scope'], counters)
+    else:
+        name = get_name('layer_norm', counters)
+
+    stop_grad = False
+    if 'stop_grad' in kwargs.keys():
+        stop_grad = kwargs['stop_grad']
     
-    if h is not None:
-        with tf.variable_scope(get_name('conditional_weights', counters)):
-            hw = get_var_maybe_avg('hw', ema, shape=[int_shape(h)[-1], 2 * num_filters], dtype=tf.float32,
-                                    initializer=tf.random_normal_initializer(0, 0.05), trainable=True)
-        if init:
-            hw = hw.initialized_value()
-        c2 += tf.reshape(tf.matmul(h, hw), [xs[0], 1, 1, 2 * num_filters])
-    
+    in_shape = int_shape(x)
 
-    a, b = tf.split(c2, 2, 3)
-    c3 = a * tf.nn.sigmoid(b)
-    
-    return x + c3
+    with tf.variable_scope(name):
+        gamma = get_var_maybe_avg(name+'_gamma', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+                              initializer=tf.constant_initializer(1.), trainable=True)
+        beta = get_var_maybe_avg(name+'_beta', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+                                initializer=tf.constant_initializer(0.), trainable=True)
+        mean, variance = tf.nn.moments(x, [1,2,3], keep_dims=True)
+        out = tf.nn.batch_normalization(x, mean, variance, offset=beta, scale=gamma, variance_epsilon=1e-12, name='layernorm')
+        return out
 
-''' utilities for shifting the image around, efficient alternative to masking convolutions '''
 
-def down_shift(x):
-    xs = int_shape(x)
-    return tf.concat([tf.zeros([xs[0],1,xs[2],xs[3]]), x[:,:xs[1]-1,:,:]],1)
-
-def right_shift(x):
-    xs = int_shape(x)
-    return tf.concat([tf.zeros([xs[0],xs[1],1,xs[3]]), x[:,:,:xs[2]-1,:]],2)
 
 @add_arg_scope
-def down_shifted_conv2d(x, num_filters, filter_size=[2,3], stride=[1,1], **kwargs):
-    x = tf.pad(x, [[0,0],[filter_size[0]-1,0], [int((filter_size[1]-1)/2),int((filter_size[1]-1)/2)],[0,0]])
-    return conv2d(x, num_filters, filter_size=filter_size, pad='VALID', stride=stride, **kwargs)
+def self_attention(x, qk_chns, v_chns, **kwargs):
+    shape = int_shape(x)
+    query_conv = tf.reshape(nin(x, qk_chns, nonlinearity=None, scope='global_attention'), (shape[0], shape[1]*shape[2], -1))
+    key_conv = tf.reshape(nin(x, qk_chns, nonlinearity=None, scope='global_attention'), (shape[0], shape[1]*shape[2], -1))
+    value_conv = tf.reshape(nin(x, v_chns, nonlinearity=None, scope='global_attention'), (shape[0], shape[1]*shape[2], -1))
+    energy = tf.einsum("bnf,bjf->bnj", query_conv, key_conv)
+    attention_map = tf.nn.softmax(energy, axis=-1)
+    out = tf.einsum("bnf,bnj->bjf", value_conv, attention_map)
+
+    if shape[-1] != v_chns:
+        x = nin(x, v_chns, nonlinearity=None, scope='global_attention')
+        
+    return tf.reshape(out, shape[:-1]+[v_chns]) + x
 
 @add_arg_scope
-def down_shifted_deconv2d(x, num_filters, filter_size=[2,3], stride=[1,1], **kwargs):
-    x = deconv2d(x, num_filters, filter_size=filter_size, pad='VALID', stride=stride, **kwargs)
-    xs = int_shape(x)
-    return x[:,:(xs[1]-filter_size[0]+1),int((filter_size[1]-1)/2):(xs[2]-int((filter_size[1]-1)/2)),:]
+def cond_instance_norm_plus(x, h, nr_classes, counters=[], **kwargs):
+    """
+    Adjusted conditional instance normalization
 
-@add_arg_scope
-def down_right_shifted_conv2d(x, num_filters, filter_size=[2,2], stride=[1,1], **kwargs):
-    x = tf.pad(x, [[0,0],[filter_size[0]-1, 0], [filter_size[1]-1, 0],[0,0]])
-    return conv2d(x, num_filters, filter_size=filter_size, pad='VALID', stride=stride, **kwargs)
+    y is the index of classes
+    """
+    if 'scope' in kwargs.keys():
+        name = get_name(kwargs['scope'], counters)
+    else:
+        name = get_name('cond_batch_norm', counters)
 
-@add_arg_scope
-def down_right_shifted_deconv2d(x, num_filters, filter_size=[2,2], stride=[1,1], **kwargs):
-    x = deconv2d(x, num_filters, filter_size=filter_size, pad='VALID', stride=stride, **kwargs)
-    xs = int_shape(x)
-    return x[:,:(xs[1]-filter_size[0]+1):,:(xs[2]-filter_size[1]+1),:]
+    stop_grad = False
+    if 'stop_grad' in kwargs.keys():
+        stop_grad = kwargs['stop_grad']
+
+    in_shape = int_shape(x)
+
+    with tf.variable_scope(name):
+        gamma = get_var_maybe_avg(name+'_gamma', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+                              initializer=tf.constant_initializer(1.), trainable=True)
+        beta = get_var_maybe_avg(name+'_beta', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+                                initializer=tf.constant_initializer(0.), trainable=True)
+        alpha = get_var_maybe_avg(name+'_alpha', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+                                initializer=tf.constant_initializer(0.), trainable=True)
+        mean, variance = tf.nn.moments(x, [1, 2], keep_dims=True)
+        cm, cvar = tf.nn.moments(mean, [-1], keep_dims=True)
+        adjusted_mean = tf.nn.batch_normalization(mean, cm, cvar, offset=None, scale=None, variance_epsilon=1e-12, name='adjust_norm')
+        offset = tf.gather(beta, h, axis=0)[:, tf.newaxis, tf.newaxis, :]
+        scale = tf.gather(beta, h, axis=0)[:, tf.newaxis, tf.newaxis, :]
+        out = tf.nn.batch_normalization(x, mean, variance, offset=offset, scale=scale, variance_epsilon=1e-12, name='instancenorm')
+        out = out + adjusted_mean*tf.gather(alpha, h, axis=0)[:, tf.newaxis, tf.newaxis, :]
+        return out

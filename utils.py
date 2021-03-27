@@ -15,14 +15,12 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from skimage import measure, io
-from skvideo.io import FFmpegWriter
-
+from skimage.metrics import structural_similarity
 import subprocess as sp
 import tempfile as tmp
 from multiprocessing import Process, Queue
 
 import yaml
-import _pickle as cPickle
 import h5py
 from termcolor import colored
 
@@ -140,7 +138,11 @@ def noise(mu, sigma, shape):
     """
     return np.random.normal(mu, sigma, shape).astype(np.float32)
 
+<<<<<<< HEAD
 def bart(nargout, cmd, return_str=False, *args):
+=======
+def bart(nargout, cmd, *args):
+>>>>>>> 2a6e0e61b82f987cef8e50412936d2c292e4e821
     """
     call bart from system command line
     """
@@ -162,14 +164,7 @@ def bart(nargout, cmd, return_str=False, *args):
 
     shell_str = 'bart ' + cmd + ' ' + in_str + ' ' + out_str
     print(shell_str)
-    if not return_str:
-        ERR = os.system(shell_str)
-    else:
-        try:
-            strs = sp.check_output(shell_str, shell=True).decode()
-            return strs
-        except:
-            ERR = True
+    ERR = os.system(shell_str)    
 
 
     for elm in infiles:
@@ -215,7 +210,7 @@ def ssim(img1, img2):
     """
     img1 = abs(img1)/norm(img1)
     img2 = abs(img2)/norm(img2)
-    return measure.compare_ssim(norm_to_uint8(img1), norm_to_uint8(img2))
+    return structural_similarity(norm_to_uint8(img1), norm_to_uint8(img2), data_range=255.)
 
 def save_img(img, path, vmin=0., vmax=1.):
     """
@@ -232,6 +227,29 @@ def save_img(img, path, vmin=0., vmax=1.):
     plt.savefig(path+'.pdf', bbox_inches='tight', pad_inches = 0)
     plt.close()
 
+
+def mask2d( nx, ny, center_r = 15, undersampling = 0.5 ):
+    #create undersampling mask
+    k = int(round(nx*ny*undersampling)) #undersampling
+    ri = np.random.choice(nx*ny,k,replace=False) #index for undersampling
+    ma = np.zeros(nx*ny) #initialize an all zero vector
+    ma[ri] = 1 #set sampled data points to 1
+    mask = ma.reshape((nx,ny))
+
+    # center k-space index range
+    if center_r > 0:
+
+        cx = np.int(nx/2)
+        cy = np.int(ny/2)
+
+        cxr_b = round(cx-center_r)
+        cxr_e = round(cx+center_r+1)
+        cyr_b = round(cy-center_r)
+        cyr_e = round(cy+center_r+1)
+
+        mask[cxr_b:cxr_e, cyr_b:cyr_e] = 1. #center k-space is fully sampled
+
+    return mask
 
 def gen_mask_1D(ratio=0.1,center=20, ph=256, fe=256):
     """
@@ -831,28 +849,6 @@ def get_lr(step, lr, warmup_steps, hidden_size):
     ret = 5000. * hidden_size ** (-0.5) * \
           np.min([(step + 1) * warmup_steps ** (-1.5), (step + 1) ** (-0.5)])
     return ret * lr_base
-
-#TODO delete this function
-def unpickle(file):
-    with open(file, 'rb') as fo:
-        dict = cPickle.load(fo, encoding='latin1')
-    return dict
-
-def write_video(path, vol, fps=60):
-    """
-    vol = [frames, width, height]
-    """
-    shape = vol.shape
-    width = shape[1]
-    height = shape[2]
-    crf = 5
-    vol = abs(vol)/np.max(abs(vol), axis=(1,2))[:, np.newaxis, np.newaxis]*255.0
-    video = FFmpegWriter(path, 
-            inputdict={'-r': str(fps), '-s':'{}x{}'.format(width,height)},
-            outputdict={'-r': str(fps), '-c:v': 'libx264', '-crf': str(crf), '-preset': 'ultrafast', '-pix_fmt': 'yuv444p'})
-    video.writeFrame(vol[...,np.newaxis].astype(np.uint8))
-    video.close()
-
 
 def export_model(saver, sess, path, name, as_text=False, gpu_id=None):
     saver.save(sess, os.path.join(path, name))

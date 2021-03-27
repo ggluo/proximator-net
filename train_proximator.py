@@ -1,15 +1,11 @@
 import os
 import sys
-file_path = os.path.realpath(__file__)
-root_path = file_path.split('/prior')[0]
-prior_folder = file_path.split('/workbench')[0]
-sys.path.append(root_path)  # this is an ugly way for module import
 
 from proximator import proximator
 from dncnn import dncnn
-from . import nn
-from common import utils
-from common.utils import create_dataloader_procs, terminate_procs
+import nn
+import utils
+from utils import create_dataloader_procs, terminate_procs
 
 import tensorflow.compat.v1 as tf
 tf.disable_eager_execution()
@@ -22,7 +18,7 @@ from datetime import datetime
 from multiprocessing import Queue
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config', type=str, default='./yaml/proximator_dncnn.yaml')
+parser.add_argument('--config', type=str, default='config.yaml')
 
 args = parser.parse_args()
 config = utils.load_config(args.config)
@@ -30,12 +26,12 @@ config = utils.load_config(args.config)
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = config['gpu_id']
 
-log_path = os.path.join(prior_folder, 'logs', config['model']) + "/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+log_path = os.path.join('./', 'logs', config['model']) + "/" + datetime.now().strftime("%Y%m%d-%H%M%S")
 if not os.path.exists(log_path):
     os.mkdir(log_path)
 log_writer = tf.summary.FileWriter(log_path)
 
-save_path = os.path.join(prior_folder, 'save', config['model'])
+save_path = os.path.join('./', 'save', config['model'])
 if not os.path.exists(save_path):
     os.mkdir(save_path)
 utils.save_config(config, save_path)
@@ -64,14 +60,15 @@ grads = []
 loss_test = []
 logits = []
 logits_test = []
-
+l2_reg = []
 # create tower
 for i in range(config['nr_gpu']):
     with tf.device('/gpu:%d'%i):
         
         # train
         logits.append(ins_proximator.forward(xs[i]))
-        loss.append(tf.reduce_mean(tf.math.square(logits[-1]-xs_clean[i])))
+        l2_reg.append(tf.concat(tf.gradients(logits[-1], xs[i]), axis=0))
+        loss.append(tf.reduce_mean(tf.math.square(logits[-1]-xs_clean[i]))+config['sigma']*config['sigma']*tf.reduce_mean(tf.math.square(tf.stop_gradient(l2_reg[-1]))))
         grads.append(tf.gradients(loss[-1], all_params, colocate_gradients_with_ops=True))
 
         # test
@@ -133,8 +130,6 @@ test_queue = Queue(config['num_prepare'])
 test_sign = Queue(1)
 test_procs = []
 
-if config['dataset_suffix'] == 'npz':
-    fileloader = utils.npz_loader
 
 create_dataloader_procs(datalist = train_files,
                    train_queue= train_queue,
@@ -144,7 +139,7 @@ create_dataloader_procs(datalist = train_files,
                    batch_size = config['batch_size']*config['nr_gpu'],
                    input_shape = config['slice_shape'],
                    normalize_func = utils.normalize_with_max,
-                   fileloader=fileloader,
+                   fileloader=utils.mat_loader,
                    rand_scalor=config['rand_scalor'])
 
 create_dataloader_procs(datalist = test_files,
@@ -155,7 +150,7 @@ create_dataloader_procs(datalist = test_files,
                    batch_size = config['batch_size']*config['nr_gpu'],
                    input_shape = config['slice_shape'],
                    normalize_func = utils.normalize_with_max,
-                   fileloader=fileloader,
+                   fileloader=utils.mat_loader,
                    rand_scalor=config['rand_scalor'])
 
 

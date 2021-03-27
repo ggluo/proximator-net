@@ -5,8 +5,6 @@ proximator for fista/admm
 class proximator():
 
     def __init__(self, net, chns=2, iteration=3):
-        """
-        """
         self.net       = net
         self.chns      = chns
         self.iteration = iteration

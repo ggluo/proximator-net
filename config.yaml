@@ -1,10 +1,10 @@
 ### para
-model: 'PROXIMATOR'
-batch_size: 50
+model: 'proximator_l2'
+batch_size: 10
 slice_shape: [256, 256, 2]
 data_chns: 'CPLX'
 nr_layers: 5
-nr_filters: 64
+nr_filters: 100
 lr: 0.001
 iteration: 3
 
@@ -15,16 +15,16 @@ save_interval: 50
 log_interval: 10
 
 ### data
-training_data_path: /home/ague/data/gluo/dataset/brain_mat/train
-testing_data_path: /home/ague/data/gluo/dataset/brain_mat/test
-dataset_suffix: 'npz'
+training_data_path: /media/jason/brain_mat/brain_mat/train
+testing_data_path: /media/jason/brain_mat/brain_mat/test
+dataset_suffix: 'mat'
 normalization: 'normalize_with_max'
 num_prepare: 10
 nr_thread: 1
 rand_scalor: 0.8
-mu: 0.03
+mu: 0.0
 sigma: 0.03
 
 ### gpu
-nr_gpu: 2
-gpu_id: '2,3'
+nr_gpu: 3
+gpu_id: '1,2,3'
