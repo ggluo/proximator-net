@@ -40,6 +40,9 @@ utils.save_config(config, save_path)
 xs = [tf.placeholder(tf.float32, 
                    shape=[config['batch_size']]+config['slice_shape']
                    ) for _ in range(config['nr_gpu'])]
+hs = [tf.placeholder(tf.int32, 
+                   shape=[config['batch_size']]
+                   ) for _ in range(config['nr_gpu'])]
 
 # clean images as labels
 xs_clean = [tf.placeholder(tf.float32, 
@@ -47,10 +50,9 @@ xs_clean = [tf.placeholder(tf.float32,
                    ) for _ in range(config['nr_gpu'])]
 
 tf_lr = tf.placeholder(tf.float32, shape=[])
-
-#ins_net = unet(chns=2, nr_levels=config['nr_levels'], filters_base=config['filters_base'])
-ins_net = dncnn(chns=2, nr_layers=config['nr_layers'], nr_filters=config['nr_filters'])
-init_pass = ins_net.model(xs[0], init=True)
+sigmas = np.linspace(config['sigma_0'], config['sigma_1'], config['sigma_steps'])
+ins_net = dncnn(chns=2, nr_layers=config['nr_layers'], nr_filters=config['nr_filters'], nr_classes=len(sigmas))
+init_pass = ins_net.forward(xs[0], hs[0], init=True)
 ins_proximator = proximator(ins_net, chns=2, iteration=config['iteration'])
 
 all_params = tf.trainable_variables()
@@ -62,19 +64,19 @@ logits = []
 logits_test = []
 l2_reg = []
 
-nonlinearity = 
+
 # create tower
 for i in range(config['nr_gpu']):
     with tf.device('/gpu:%d'%i):
         # TODO h, nr_classes, nonlinear
         # train
-        logits.append(ins_proximator.forward(xs[i], h, config['nr_classes'], nonlinearity))
+        logits.append(ins_proximator.forward(xs[i], hs[i], config['nr_classes']))
         l2_reg.append(tf.concat(tf.gradients(logits[-1], xs[i]), axis=0))
         loss.append(tf.reduce_mean(tf.math.square(logits[-1]-xs_clean[i]))+config['sigma']*config['sigma']*tf.reduce_mean(tf.math.square(tf.stop_gradient(l2_reg[-1]))))
         grads.append(tf.gradients(loss[-1], all_params, colocate_gradients_with_ops=True))
 
         # test
-        logits_test.append(ins_proximator.forward(xs[i], h, config['nr_classes'], nonlinearity))
+        logits_test.append(ins_proximator.forward(xs[i], hs[i], config['nr_classes'], nonlinearity))
         loss_test.append(tf.reduce_mean(tf.math.square(logits_test[-1]-xs_clean[i])))
 
 # average loss
@@ -174,15 +176,20 @@ while True:
     ls = config['lr']
 
     batch = train_queue.get()
+    labels = np.random.randint(0, len(sigmas), (batch.shape[0]), dtype='int32')
+    
     xc = np.split(batch, config['nr_gpu'])
-
-    noisy_batch = utils.noise(mu=config['mu'], sigma=config['sigma'], shape=batch.shape) + batch
+    # sigma=[]
+    noisy_batch = utils.noise(shape=batch.shape)*sigmas[labels] + batch
     xn = np.split(noisy_batch, config['nr_gpu'])
-
+    labels_l = np.split(labels, config['nr_gpu'])
+    
     feed_dict = {xs[i]: xn[i] for i in range(config['nr_gpu'])}
     feed_dict.update({xs_clean[i]: xc[i] for i in range(config['nr_gpu'])})
+    feed_dict.update({hs[i]: labels_l[i] for i in range(config['nr_gpu'])})
     feed_dict.update({tf_lr: config['lr']})
-
+    
+    
     l, _, sums_train = sess.run([f_loss, optimizer, train_summary_op], feed_dict=feed_dict)
     
     if epoch_sign.full() and epoch_sign.get():
@@ -193,13 +200,16 @@ while True:
 
             test_batch = test_queue.get()
             xc = np.split(test_batch, config['nr_gpu'])
-
+            labels = np.random.randint(0, len(sigmas), (batch.shape[0]), dtype='int32')
+            
             test_batch = utils.noise(mu=config['mu'], sigma=config['sigma'], shape=test_batch.shape) + test_batch
             xn = np.split(test_batch, config['nr_gpu'])
-
+            labels_l = np.split(labels, config['nr_gpu'])
+            
             test_dict = {xs[i]:xn[i] for i in range(config['nr_gpu'])}
-            test_dict.update({xs_clean[i]:xc[i] for i in range(config['nr_gpu'])})
-
+            test_dict.update({xs_clean[i]:xc[i]  for i in range(config['nr_gpu'])})
+            test_dict.update({hs[i]: labels_l[i] for i in range(config['nr_gpu'])})
+            
             l, sums_test = sess.run([f_loss_test, test_summary_op], feed_dict=feed_dict)
             
 
