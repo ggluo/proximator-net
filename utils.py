@@ -132,7 +132,7 @@ def writecfl(name, array):
     array.T.astype(np.complex64).tofile(d) # tranpose for column-major order
     d.close()
 
-def noise(mu, sigma, shape):
+def noise(mu=0, sigma=1.0, shape):
     """
     generate gaussian noise
     """
