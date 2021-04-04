@@ -202,7 +202,7 @@ while True:
             xc = np.split(test_batch, config['nr_gpu'])
             labels = np.random.randint(0, len(sigmas), (batch.shape[0]), dtype='int32')
             
-            test_batch = utils.noise(mu=config['mu'], sigma=config['sigma'], shape=test_batch.shape) + test_batch
+            test_batch = utils.noise(shape=test_batch.shape)*sigmas[labels] + test_batch
             xn = np.split(test_batch, config['nr_gpu'])
             labels_l = np.split(labels, config['nr_gpu'])
             
