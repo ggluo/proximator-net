@@ -321,7 +321,7 @@ def self_attention(x, qk_chns, v_chns, **kwargs):
     return tf.reshape(out, shape[:-1]+[v_chns]) + x
 
 @add_arg_scope
-def cond_instance_norm_plus(x, h, nr_classes, counters=[], **kwargs):
+def cond_instance_norm_plus(x, h, nr_classes, counters={}, **kwargs):
     """
     Adjusted conditional instance normalization
 
