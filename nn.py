@@ -349,7 +349,7 @@ def cond_instance_norm_plus(x, h, nr_classes, counters={}, **kwargs):
         cm, cvar = tf.nn.moments(mean, [-1], keep_dims=True)
         adjusted_mean = tf.nn.batch_normalization(mean, cm, cvar, offset=None, scale=None, variance_epsilon=1e-12, name='adjust_norm')
         offset = tf.expand_dims(tf.expand_dims(tf.gather(beta, h, axis=0), axis=1), axis=1)
-        scale = tf.expand_dims(tf.expand_dims(tf.gather(beta, h, axis=0), axis=1), axis=1)
+        scale = tf.expand_dims(tf.expand_dims(tf.gather(gamma, h, axis=0), axis=1), axis=1)
         out = tf.nn.batch_normalization(x, mean, variance, offset=offset, scale=scale, variance_epsilon=1e-12, name='instancenorm')
         out = out + adjusted_mean*tf.expand_dims(tf.expand_dims(tf.gather(alpha, h, axis=0), axis=1), axis=1)
         return out
