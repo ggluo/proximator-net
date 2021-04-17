@@ -13,7 +13,6 @@ class dncnn():
         self.filter_size = filter_size
         self.nr_layers   = nr_layers
         self.nr_filters  = nr_filters
-        self.is_training = is_training
         self.chns        = chns
         self.nr_classes  = nr_classes
         self.nonlinearity= nonlinearity
