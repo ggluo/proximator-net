@@ -26,7 +26,7 @@ config = utils.load_config(args.config)
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = config['gpu_id']
 
-log_path = os.path.join('./', 'logs', config['model']) + "/" + datetime.now().strftime("%Y%m%d-%H%M%S")
+log_path = os.path.join('./', 'logs', config['model']) # + "/" + datetime.now().strftime("%Y%m%d-%H%M%S")
 if not os.path.exists(log_path):
     os.mkdir(log_path)
 log_writer = tf.summary.FileWriter(log_path)
