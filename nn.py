@@ -265,16 +265,12 @@ def instance_norm(x, counters={}, **kwargs):
     else:
         name = get_name('instance_norm', counters)
 
-    stop_grad = False 
-    if 'stop_grad' in kwargs.keys():
-        stop_grad = kwargs['stop_grad']
-
     in_shape = int_shape(x)
     
     with tf.variable_scope(name):
-        gamma = get_var_maybe_avg(name+'_gamma', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+        gamma = get_var_maybe_avg(name+'_gamma', shape=[in_shape[-1]], dtype=tf.float32,
                               initializer=tf.constant_initializer(1.), trainable=True)
-        beta = get_var_maybe_avg(name+'_beta', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+        beta = get_var_maybe_avg(name+'_beta', shape=[in_shape[-1]], dtype=tf.float32,
                                 initializer=tf.constant_initializer(0.), trainable=True)
         mean, variance = tf.nn.moments(x, [1, 2], keep_dims=True)
         out = tf.nn.batch_normalization(x, mean, variance, offset=beta, scale=gamma, variance_epsilon=1e-12, name='instancenorm')
@@ -287,17 +283,13 @@ def layer_norm(x, counters={}, **kwargs):
         name = get_name(kwargs['scope'], counters)
     else:
         name = get_name('layer_norm', counters)
-
-    stop_grad = False
-    if 'stop_grad' in kwargs.keys():
-        stop_grad = kwargs['stop_grad']
     
     in_shape = int_shape(x)
 
     with tf.variable_scope(name):
-        gamma = get_var_maybe_avg(name+'_gamma', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+        gamma = get_var_maybe_avg(name+'_gamma', shape=[in_shape[-1]], dtype=tf.float32,
                               initializer=tf.constant_initializer(1.), trainable=True)
-        beta = get_var_maybe_avg(name+'_beta', stop_grad, shape=[in_shape[-1]], dtype=tf.float32,
+        beta = get_var_maybe_avg(name+'_beta', shape=[in_shape[-1]], dtype=tf.float32,
                                 initializer=tf.constant_initializer(0.), trainable=True)
         mean, variance = tf.nn.moments(x, [1,2,3], keep_dims=True)
         out = tf.nn.batch_normalization(x, mean, variance, offset=beta, scale=gamma, variance_epsilon=1e-12, name='layernorm')
@@ -332,18 +324,16 @@ def cond_instance_norm_plus(x, h, nr_classes, counters={}, **kwargs):
     else:
         name = get_name('cond_batch_norm', counters)
 
-    stop_grad = False
-    if 'stop_grad' in kwargs.keys():
-        stop_grad = kwargs['stop_grad']
+
 
     in_shape = int_shape(x)
 
     with tf.variable_scope(name):
-        gamma = get_var_maybe_avg(name+'_gamma', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+        gamma = get_var_maybe_avg(name+'_gamma', shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
                               initializer=tf.constant_initializer(1.), trainable=True)
-        beta = get_var_maybe_avg(name+'_beta', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+        beta = get_var_maybe_avg(name+'_beta', shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
                                 initializer=tf.constant_initializer(0.), trainable=True)
-        alpha = get_var_maybe_avg(name+'_alpha', stop_grad, shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
+        alpha = get_var_maybe_avg(name+'_alpha', shape=[nr_classes, in_shape[-1]], dtype=tf.float32,
                                 initializer=tf.constant_initializer(0.), trainable=True)
         mean, variance = tf.nn.moments(x, [1, 2], keep_dims=True)
         cm, cvar = tf.nn.moments(mean, [-1], keep_dims=True)

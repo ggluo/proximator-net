@@ -27,7 +27,7 @@ class dncnn():
             ######
             l_o = nn.conv2d(x, self.nr_filters, self.filter_size, nonlinearity=None)
             l_o = nn.cond_instance_norm_plus(l_o, h, self.nr_classes)
-            l_o = nonlinearity(l_o)
+            l_o = self.nonlinearity(l_o)
             ######
             lys.append(l_o)
             #

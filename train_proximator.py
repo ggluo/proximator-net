@@ -6,6 +6,7 @@ from dncnn import dncnn
 import nn
 import utils
 from utils import create_dataloader_procs, terminate_procs
+from custom_adam import AdamOptimizer, average_gradients
 
 import tensorflow.compat.v1 as tf
 tf.disable_eager_execution()
@@ -43,7 +44,9 @@ xs = [tf.placeholder(tf.float32,
 hs = [tf.placeholder(tf.int32, 
                    shape=[config['batch_size']]
                    ) for _ in range(config['nr_gpu'])]
-
+sigma = [tf.placeholder(tf.float32, 
+                   shape=[config['batch_size']]
+                   ) for _ in range(config['nr_gpu'])]
 # clean images as labels
 xs_clean = [tf.placeholder(tf.float32, 
                    shape=[config['batch_size']]+config['slice_shape']
@@ -63,34 +66,35 @@ loss_test = []
 logits = []
 logits_test = []
 l2_reg = []
-
+optimizer = AdamOptimizer(tf_lr, beta1=0.9, beta2=0.999)
 
 # create tower
 for i in range(config['nr_gpu']):
     with tf.device('/gpu:%d'%i):
         # TODO h, nr_classes, nonlinear
         # train
-        logits.append(ins_proximator.forward(xs[i], hs[i], config['nr_classes']))
+        logits.append(ins_proximator.forward(xs[i], hs[i]))
         l2_reg.append(tf.concat(tf.gradients(logits[-1], xs[i]), axis=0))
-        loss.append(tf.reduce_mean(tf.math.square(logits[-1]-xs_clean[i]))+config['sigma']*config['sigma']*tf.reduce_mean(tf.math.square(tf.stop_gradient(l2_reg[-1]))))
-        grads.append(tf.gradients(loss[-1], all_params, colocate_gradients_with_ops=True))
+        loss.append(tf.reduce_mean(tf.math.square(logits[-1]-xs_clean[i]))+sigma[i]*sigma[i]*tf.reduce_mean(tf.math.square(tf.stop_gradient(l2_reg[-1]))))
+        gvs = optimizer.compute_gradients(loss[-1], all_params)
+        gvs = [(k, v) for (k, v) in gvs if k is not None]
+        grads.append(gvs)
 
         # test
-        logits_test.append(ins_proximator.forward(xs[i], hs[i], config['nr_classes'], nonlinearity))
+        logits_test.append(ins_proximator.forward(xs[i], hs[i]))
         loss_test.append(tf.reduce_mean(tf.math.square(logits_test[-1]-xs_clean[i])))
+
+grads_avg = average_gradients(grads)
+op_run    = optimizer.apply_gradients(grads_avg)
 
 # average loss
 with tf.device('/gpu:0'):    
     for i in range(1, config['nr_gpu']):
         loss[0] += loss[i]
         loss_test[0] += loss_test[i]
-        for j in range(len(grads[0])):
-            grads[0][j] += grads[i][j]
-    
-    optimizer = nn.adam_updates(all_params, grads[0], lr=tf_lr, mom1=0.95, mom2=0.9995)
 
-f_loss = loss[0]
-f_loss_test = loss_test[0]
+f_loss = tf.reduce_mean(loss[0])
+f_loss_test = tf.reduce_mean(loss_test[0])
 
 
 ### create summary
@@ -180,17 +184,18 @@ while True:
     
     xc = np.split(batch, config['nr_gpu'])
     # sigma=[]
-    noisy_batch = utils.noise(shape=batch.shape)*sigmas[labels] + batch
+    noisy_batch = utils.noise(shape=batch.shape)*sigmas[labels][:,np.newaxis, np.newaxis, np.newaxis] + batch
     xn = np.split(noisy_batch, config['nr_gpu'])
     labels_l = np.split(labels, config['nr_gpu'])
     
     feed_dict = {xs[i]: xn[i] for i in range(config['nr_gpu'])}
     feed_dict.update({xs_clean[i]: xc[i] for i in range(config['nr_gpu'])})
     feed_dict.update({hs[i]: labels_l[i] for i in range(config['nr_gpu'])})
+    feed_dict.update({sigma[i]: sigmas[labels_l[i]] for i in range(config['nr_gpu'])})
     feed_dict.update({tf_lr: config['lr']})
     
     
-    l, _, sums_train = sess.run([f_loss, optimizer, train_summary_op], feed_dict=feed_dict)
+    l, _, sums_train = sess.run([f_loss, op_run, train_summary_op], feed_dict=feed_dict)
     
     if epoch_sign.full() and epoch_sign.get():
         epochs = epochs + 1
