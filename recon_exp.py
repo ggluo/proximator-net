@@ -9,6 +9,7 @@ from dncnn import dncnn
 
 import os
 import numpy as np
+import cupy as cp
 import matplotlib.pyplot as plt
 from scipy.linalg import norm
 from scipy.io import loadmat
@@ -49,24 +50,24 @@ def recon(kspace_path, mask):
 
     mask = utils.gen_mask_1D(ratio=0.3, center=22)
     #mask = utils.mask2d(256, 256, 20, 0.2)
-    und_ksp = mask[..., np.newaxis] * ksp
+    und_ksp = mask[..., cp.newaxis] * ksp
     #utils.save_img(abs(mask), save_path+'/mask', 0, 1)
 
-    #coilsen = utils.bart(1, 'ecalib -m1 -r20 -c0.001', und_ksp[np.newaxis, ...])
-    coilsen = utils.bart(1, 'caldir 20', und_ksp[np.newaxis, ...])
-    coilsen = np.squeeze(coilsen)
-    l1_recon = utils.bart(1, 'pics -R W:3:0:%f -d5 -i100 -e'%(recon_config['bart_l1_lambda']),  und_ksp[:,:,np.newaxis,...], coilsen[:,:,np.newaxis,:]) 
-    utils.save_img(abs(l1_recon), save_path+'/l1_recon', np.min(abs(l1_recon)), np.max(abs(l1_recon)))
-    utils.save_img(abs(rss), save_path+'/rss', np.min(abs(rss)), np.max(abs(rss)))
+    #coilsen = utils.bart(1, 'ecalib -m1 -r20 -c0.001', und_ksp[cp.newaxis, ...])
+    coilsen = utils.bart(1, 'caldir 20', und_ksp[cp.newaxis, ...])
+    coilsen = cp.squeeze(coilsen)
+    l1_recon = utils.bart(1, 'pics -R W:3:0:%f -d5 -i100 -e'%(recon_config['bart_l1_lambda']),  und_ksp[:,:,cp.newaxis,...], coilsen[:,:,cp.newaxis,:]) 
+    utils.save_img(abs(l1_recon), save_path+'/l1_recon', cp.min(abs(l1_recon)), cp.max(abs(l1_recon)))
+    utils.save_img(abs(rss), save_path+'/rss', cp.min(abs(rss)), cp.max(abs(rss)))
     def sense_kernel_cart(x_, img_k):
         tmp = ops.A_cart(img_k, coilsen, mask, [nx, ny])
         tmp = ops.AT_cart(tmp, coilsen, mask, [nx, ny])
-        img_k = img_k + np.squeeze(x_) - np.squeeze(tmp)
+        img_k = img_k + cp.squeeze(x_) - cp.squeeze(tmp)
         return img_k
 
     zero_filled = ops.AT_cart(und_ksp, coilsen, mask, [nx, ny])
 
-    utils.save_img(abs(zero_filled), save_path+'/zero_filled', np.min(abs(zero_filled)), np.max(abs(zero_filled)))
+    utils.save_img(abs(zero_filled), save_path+'/zero_filled', cp.min(abs(zero_filled)), cp.max(abs(zero_filled)))
 
     img_k = zero_filled
     rss = abs(rss)/norm(abs(rss))
@@ -74,13 +75,13 @@ def recon(kspace_path, mask):
         img_k = sense_kernel_cart(zero_filled, img_k)
         
         img_k, scalar = utils.scale_down(img_k)
-        img_k = img_k+ 0.001*np.random.randn(256, 256)
+        img_k = img_k+ 0.001*cp.random.randn(256, 256)
         tmp = img_k
-        img_k = tmp - 0.01*(np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))- tmp)
-        img_k = img_k*0.7 + 0.3*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
+        img_k = tmp - 0.01*(cp.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[cp.newaxis, ...])})))- tmp)
+        img_k = img_k*0.7 + 0.3*cp.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[cp.newaxis, ...])})))
 
         img_k = utils.scale_up(img_k, scalar)
-        #utils.save_img(abs(img_k), save_path+'/img_k_'+str(i), np.min(abs(img_k)), np.max(abs(img_k)))
+        #utils.save_img(abs(img_k), save_path+'/img_k_'+str(i), cp.min(abs(img_k)), cp.max(abs(img_k)))
         #psnr_net = utils.psnr(abs(img_k)/norm(abs(img_k)), rss)
         #print("psnr_net %fdB"% psnr_net)
         

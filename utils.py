@@ -6,6 +6,7 @@ from sklearn.preprocessing import MultiLabelBinarizer
 
 import math
 import numpy as np
+import cupy as cp
 from numpy.matlib import repmat
 from scipy.io import loadmat
 from scipy.linalg import norm
@@ -78,19 +79,19 @@ def get_labelizer(labels_arr):
     return mlb
 
 def float2cplx(float_in):
-     return np.asfortranarray(float_in[...,0]+1.0j*float_in[...,1], dtype='complex64')
+     return cp.asfortranarray(float_in[...,0]+1.0j*float_in[...,1], dtype='complex64')
 
 def cplx2float(cplx_in):
-     return np.asfortranarray(np.stack((cplx_in.real, cplx_in.imag), axis=-1), dtype='float32')
+     return cp.asfortranarray(cp.stack((cplx_in.real, cplx_in.imag), axis=-1), dtype='float32')
 
 def gen_weights(nSpokes, N):
     """
     generate radial compensation weight
     """
-    rho = np.linspace(-0.5,0.5,N).astype('float32')
+    rho = cp.linspace(-0.5,0.5,N).astype('float32')
     w = abs(rho)/0.5
-    w = np.transpose(repmat(w, nSpokes, 1), [1, 0])
-    w = np.reshape(w, [1, N, nSpokes])
+    w = cp.transpose(repmat(w, nSpokes, 1), [1, 0])
+    w = cp.reshape(w, [1, N, nSpokes])
     return w
 
 
@@ -107,13 +108,13 @@ def readcfl(name):
     dims = [int(i) for i in l.split( )]
 
     # remove singleton dimensions from the end
-    n = np.prod(dims)
-    dims_prod = np.cumprod(dims)
-    dims = dims[:np.searchsorted(dims_prod, n)+1]
+    n = cp.prod(dims)
+    dims_prod = cp.cumprod(dims)
+    dims = dims[:cp.searchsorted(dims_prod, n)+1]
 
     # load data and reshape into dims
     d = open(name + ".cfl", "r")
-    a = np.fromfile(d, dtype=np.complex64, count=n)
+    a = cp.fromfile(d, dtype=cp.complex64, count=n)
     d.close()
     return a.reshape(dims, order='F') # column-major
 
@@ -129,14 +130,14 @@ def writecfl(name, array):
     h.write('\n')
     h.close()
     d = open(name + ".cfl", "w")
-    array.T.astype(np.complex64).tofile(d) # tranpose for column-major order
+    array.T.astype(cp.complex64).tofile(d) # tranpose for column-major order
     d.close()
 
 def noise(shape, mu=0, sigma=1.0):
     """
     generate gaussian noise
     """
-    return np.random.normal(mu, sigma, shape).astype(np.float32)
+    return cp.random.normal(mu, sigma, shape).astype(cp.float32)
 
 def bart(nargout, cmd, return_str=False, *args):
     """
@@ -191,14 +192,14 @@ def psnr(img1, img2):
     """
     calculate peak SNR 
     """
-    mse = np.mean((img1-img2)**2)
-    pixel_max = np.max(img2)
+    mse = cp.mean((img1-img2)**2)
+    pixel_max = cp.max(img2)
     return 20*math.log10(pixel_max/math.sqrt(mse))
 
 def norm_to_uint8(inp):
-    maximum = np.max(inp)
+    maximum = cp.max(inp)
     out = inp/maximum*255.0
-    return out.astype(np.uint8)
+    return out.astype(cp.uint8)
 
 def ssim(img1, img2):
     """
@@ -227,16 +228,16 @@ def save_img(img, path, vmin=0., vmax=1.):
 def mask2d( nx, ny, center_r = 15, undersampling = 0.5 ):
     #create undersampling mask
     k = int(round(nx*ny*undersampling)) #undersampling
-    ri = np.random.choice(nx*ny,k,replace=False) #index for undersampling
-    ma = np.zeros(nx*ny) #initialize an all zero vector
+    ri = cp.random.choice(nx*ny,k,replace=False) #index for undersampling
+    ma = cp.zeros(nx*ny) #initialize an all zero vector
     ma[ri] = 1 #set sampled data points to 1
     mask = ma.reshape((nx,ny))
 
     # center k-space index range
     if center_r > 0:
 
-        cx = np.int(nx/2)
-        cy = np.int(ny/2)
+        cx = cp.int(nx/2)
+        cy = cp.int(ny/2)
 
         cxr_b = round(cx-center_r)
         cxr_e = round(cx+center_r+1)
@@ -261,13 +262,13 @@ def gen_mask_1D(ratio=0.1,center=20, ph=256, fe=256):
     mask
     """
     k = int(round(ph*ratio)/2.0)
-    ma = np.zeros(ph)
-    ri = np.random.choice(int(ph/2-center/2), k, replace=False)
+    ma = cp.zeros(ph)
+    ri = cp.random.choice(int(ph/2-center/2), k, replace=False)
     ma[ri] = 1
-    ri = np.random.choice(int(ph/2-center/2), k, replace=False)
+    ri = cp.random.choice(int(ph/2-center/2), k, replace=False)
     ma[ri+int(ph/2+center/2)] = 1
     ma[int(ph/2-center/2): int(ph/2+center/2)] = 1
-    mask = np.tile(ma, [fe, 1])
+    mask = cp.tile(ma, [fe, 1])
     return mask
      
 #
@@ -302,7 +303,7 @@ def h5_loader(filename, key='reconstruction_rss', labelled=False):
         return data
 
 def npz_loader(filename, key='rss', labelled=False):
-    tmp = np.load(filename)
+    tmp = cp.load(filename)
     if key not in tmp.keys():
         raise Exception("Images loading failed, key doesn't match or exist!")
     else:
@@ -333,21 +334,21 @@ def slice_image(inp, shape):
     Returns:
     
     """
-    if len(inp.shape) == 3:
-        nx, ny, _ = inp.shape
-    if len(inp.shape) == 2:
-        nx, ny = inp.shape
+    if len(icp.shape) == 3:
+        nx, ny, _ = icp.shape
+    if len(icp.shape) == 2:
+        nx, ny = icp.shape
 
     if len(shape) == 3:
         sx, sy, _ = shape
     if len(shape) == 2:
         sx, sy = shape
 
-    steps_x = int(np.ceil(float(nx)/sx))
-    steps_y = int(np.ceil(float(ny)/sy))
+    steps_x = int(cp.ceil(float(nx)/sx))
+    steps_y = int(cp.ceil(float(ny)/sy))
 
     total = steps_x*steps_y
-    pieces = np.zeros([total] + shape, dtype=inp.dtype)
+    pieces = cp.zeros([total] + shape, dtype=icp.dtype)
      
     for x in range(steps_x):
         
@@ -367,7 +368,7 @@ def slice_image(inp, shape):
                 by = y*sy
                 ey = by + sy
 
-            pieces[x*steps_y+y, ...] = np.reshape(inp[bx:ex, by:ey], shape)
+            pieces[x*steps_y+y, ...] = cp.reshape(inp[bx:ex, by:ey], shape)
     return pieces
 
 def stitch_image(inp, out_shape):
@@ -382,18 +383,18 @@ def stitch_image(inp, out_shape):
         out: (nx, ny, (chns))
     """
 
-    if len(inp.shape) == 4:
-        slices, sx, sy, chns = inp.shape
-        img = np.zeros(out_shape+[chns], dtype=inp.dtype)
+    if len(icp.shape) == 4:
+        slices, sx, sy, chns = icp.shape
+        img = cp.zeros(out_shape+[chns], dtype=icp.dtype)
 
-    if len(inp.shape) == 3:
-        slices, sx, sy = inp.shape
-        img = np.zeros(out_shape, dtype=inp.dtype)
+    if len(icp.shape) == 3:
+        slices, sx, sy = icp.shape
+        img = cp.zeros(out_shape, dtype=icp.dtype)
     
     nx, ny  = out_shape
 
-    steps_x = int(np.ceil(float(nx)/sx))
-    steps_y = int(np.ceil(float(ny)/sy))
+    steps_x = int(cp.ceil(float(nx)/sx))
+    steps_y = int(cp.ceil(float(ny)/sy))
 
     for x in range(steps_x):
         
@@ -426,7 +427,7 @@ def slice_image_center(inp, shape, width=256, height=256):
     
     Returns:
     """
-    nx, ny, _ = inp.shape
+    nx, ny, _ = icp.shape
     offset_x = (nx-width)//2
     offset_y = (ny-height)//2
     
@@ -442,27 +443,27 @@ def transform(inp, k):
     if k == 0:
         return inp
     if k == 1:    
-        return np.flipud(inp)
+        return cp.flipud(inp)
     if k == 2:
-        return np.fliplr(inp)
+        return cp.fliplr(inp)
     if k == 3:
-        return np.rot90(inp, 1)
+        return cp.rot90(inp, 1)
     if k == 4:
-        return np.rot90(inp, 2)
+        return cp.rot90(inp, 2)
     if k == 5:
-        return np.rot90(inp, 3)
+        return cp.rot90(inp, 3)
     if k == 6:
-        return np.rot90(np.flipud(inp), 1)
+        return cp.rot90(cp.flipud(inp), 1)
     if k == 7:
-        return np.rot90(np.flipud(inp), 2)
+        return cp.rot90(cp.flipud(inp), 2)
     if k == 8:
-        return np.rot90(np.flipud(inp), 3)
+        return cp.rot90(cp.flipud(inp), 3)
     if k == 9:
-        return np.rot90(np.fliplr(inp), 1)
+        return cp.rot90(cp.fliplr(inp), 1)
     if k == 10:
-        return np.rot90(np.fliplr(inp), 2)
+        return cp.rot90(cp.fliplr(inp), 2)
     if k == 11:
-        return np.rot90(np.fliplr(inp), 3)
+        return cp.rot90(cp.fliplr(inp), 3)
 
 def slice_volume(inp, shape):
     """
@@ -481,12 +482,12 @@ def slice_volume(inp, shape):
         sx, sy, _ = shape
         frames = 1
 
-    nx, ny, slices, _ = inp.shape
-    inp = np.transpose(inp, [2, 0, 1, 3])
+    nx, ny, slices, _ = icp.shape
+    inp = cp.transpose(inp, [2, 0, 1, 3])
 
     # steps along x,y dimension
-    steps_x = int(np.ceil(float(nx)/sx))
-    steps_y = int(np.ceil(float(ny)/sy))
+    steps_x = int(cp.ceil(float(nx)/sx))
+    steps_y = int(cp.ceil(float(ny)/sy))
     pieces = steps_x*steps_y # number of pieces from the original slice
     
     # steps along slice dimension
@@ -495,7 +496,7 @@ def slice_volume(inp, shape):
     # number of total blocks sliced into
     total = pieces*sliding_steps
 
-    sliced_v = np.zeros([total] + shape)
+    sliced_v = cp.zeros([total] + shape)
 
     for i in range(sliding_steps):
 
@@ -535,16 +536,16 @@ def stitch_volume(inp, shape):
     """
 
     nx, ny, slices, _ = shape
-    inp = np.transpose(inp, [1,2,0,3])
-    sx, sy, pieces, chns = inp.shape
+    inp = cp.transpose(inp, [1,2,0,3])
+    sx, sy, pieces, chns = icp.shape
 
-    steps_x = int(np.ceil(float(nx)/sx))
-    steps_y = int(np.ceil(float(ny)/sy))
+    steps_x = int(cp.ceil(float(nx)/sx))
+    steps_y = int(cp.ceil(float(ny)/sy))
     
     if steps_x*steps_y*slices != pieces:
         raise ValueError("Pieces input don't match the output shape")
 
-    vol = np.zeros([nx,ny,slices, chns])
+    vol = cp.zeros([nx,ny,slices, chns])
 
     for i in range(slices):
         for x in range(steps_x):
@@ -577,7 +578,7 @@ def normalize_with_max(x, axis=(0,1), data_chns='CPLX'):
     x is complex value
     x = x/(max(abs(x)))
     """
-    scalor = np.max(abs(x), axis)
+    scalor = cp.max(abs(x), axis)
 
     if data_chns == 'CPLX':
         normalized_x = cplx2float(x/scalor)
@@ -597,10 +598,10 @@ def normalize_with_std(x, info=False):
     """
 
     x_float = cplx2float(x)
-    x_float_mean = np.mean(x_float) 
-    x_float_std = np.std(x_float)
+    x_float_mean = cp.mean(x_float) 
+    x_float_std = cp.std(x_float)
     normalized_x = (x_float-x_float_mean)/(x_float_std+0.001)
-    scalor = np.max(normalized_x)
+    scalor = cp.max(normalized_x)
     normalized_x = normalized_x/scalor
     if info:
         return normalized_x, 
@@ -621,19 +622,19 @@ def load_image(files, queue, sign, batch_size, input_shape, data_chns='CPLX', no
     load the batch of specified shape from the random 2D images
     """
 
-    local_random = np.random.RandomState(rseed)
+    local_random = cp.random.RandomState(rseed)
     nr_files = len(files)
     train_idx = local_random.permutation(nr_files)
     idx = 0
     
     is_next_file = True
-    lefted = np.zeros((None))
+    lefted = cp.zeros((None))
 
-    image_batch = np.zeros([int(batch_size)] + input_shape)
+    image_batch = cp.zeros([int(batch_size)] + input_shape)
 
     if labelizer is not None:
-        label_batch = np.zeros([batch_size], dtype='int32')
-        lefted_label = np.zeros((None))
+        label_batch = cp.zeros([batch_size], dtype='int32')
+        lefted_label = cp.zeros((None))
         center_pos = calculate_center_pos(nx=4, sx=2) # TODO: to be configurabale
 
     while True:
@@ -653,25 +654,25 @@ def load_image(files, queue, sign, batch_size, input_shape, data_chns='CPLX', no
                     vol = fileloader(file_path, key)
                 
                 normalized_vol = normalize_func(vol, data_chns=data_chns)
-                normalized_vol = normalized_vol*round(np.random.uniform(rand_s,1.0),4)
+                normalized_vol = normalized_vol*round(cp.random.uniform(rand_s,1.0),4)
                 #normalized_vol = transform(normalized_vol, local_random.randint(0,12))
                 
-                if np.isnan(normalized_vol).any():
+                if cp.isnan(normalized_vol).any():
                     raise Exception("Sorry, NAN occurred")
                 
                 pieces = slice_image(normalized_vol, input_shape)
                 
                 if labelizer is not None:
                     if 'resample' not in os.path.split(file_path)[-1]:
-                        binary_labels = np.repeat(labelizer.transform([np.append(label, ['center'])]), pieces.shape[0], axis=0).astype('float32')
+                        binary_labels = cp.repeat(labelizer.transform([cp.append(label, ['center'])]), pieces.shape[0], axis=0).astype('float32')
                     else:
-                        binary_labels = np.array([], dtype='float32').reshape((0, len(labelizer.classes_)))
+                        binary_labels = cp.array([], dtype='float32').reshape((0, len(labelizer.classes_)))
                         for i in range(pieces.shape[0]):
                             if i in center_pos:
-                                binary_label = labelizer.transform([np.append(label, ['center'])]).astype('float32')
+                                binary_label = labelizer.transform([cp.append(label, ['center'])]).astype('float32')
                             else:
-                                binary_label = labelizer.transform([np.append(label, ['outer'])]).astype('float32')
-                            binary_labels = np.concatenate([binary_labels, binary_label], axis=0)
+                                binary_label = labelizer.transform([cp.append(label, ['outer'])]).astype('float32')
+                            binary_labels = cp.concatenate([binary_labels, binary_label], axis=0)
                          
                 if lefted.shape is ():
                     cur_remained = 0
@@ -709,10 +710,10 @@ def load_image(files, queue, sign, batch_size, input_shape, data_chns='CPLX', no
                         lefted_label = binary_labels
 
                 else:
-                    lefted = np.concatenate([lefted, pieces], axis=0)
+                    lefted = cp.concatenate([lefted, pieces], axis=0)
 
                     if labelizer is not None:
-                        lefted_label = np.concatenate([lefted_label, binary_labels], axis=0)
+                        lefted_label = cp.concatenate([lefted_label, binary_labels], axis=0)
 
 
 def load_volume(files, queue, sign, batch_size, input_x_shape, file_loader=h5_loader, key='rss', rseed=None):
@@ -720,17 +721,17 @@ def load_volume(files, queue, sign, batch_size, input_x_shape, file_loader=h5_lo
     load the batch of specified shape from the random 3D volumes
     """
 
-    local_random = np.random.RandomState(rseed)
+    local_random = cp.random.RandomState(rseed)
     nr_files = len(files)
     train_idx = local_random.permutation(nr_files)
     idx = 0
     
     is_next_file = True
-    lefted = np.zeros(None)
+    lefted = cp.zeros(None)
 
     while True:
         while queue.full() == False:
-            single_batch = np.zeros([int(batch_size)] + input_x_shape)
+            single_batch = cp.zeros([int(batch_size)] + input_x_shape)
             
             if is_next_file:
                 
@@ -741,9 +742,9 @@ def load_volume(files, queue, sign, batch_size, input_x_shape, file_loader=h5_lo
                 print("Reading the file indexed with " + str(idx) + " " + files[train_idx[idx]])
                 
                 vol = file_loader(files[train_idx[idx]], key)
-                scalar = np.max(abs(vol), axis=(1,2))[:, np.newaxis, np.newaxis]
+                scalar = cp.max(abs(vol), axis=(1,2))[:, cp.newaxis, cp.newaxis]
                 normalized_vol = vol/scalar
-                if np.isnan(normalized_vol).any():
+                if cp.isnan(normalized_vol).any():
                     raise Exception("Sorry, NAN occurred")
                 
                 blocks = slice_volume(vol, input_x_shape)
@@ -767,7 +768,7 @@ def load_volume(files, queue, sign, batch_size, input_x_shape, file_loader=h5_lo
                 if lefted.shape is ():
                     lefted = blocks
                 else:
-                    lefted = np.concatenate([lefted, blocks], axis=0)
+                    lefted = cp.concatenate([lefted, blocks], axis=0)
 
 
 def create_dataloader_procs(datalist, 
@@ -791,7 +792,7 @@ def create_dataloader_procs(datalist,
     """
 
     for _ in range(n_thread):
-        seed = np.random.randint(1e8)
+        seed = cp.random.randint(1e8)
         train_proc = Process(target=read_func, 
                              args=(datalist,
                                    train_queue,
@@ -843,7 +844,7 @@ def get_lr(step, lr, warmup_steps, hidden_size):
     """
     lr_base = lr * 0.002 # for Adam correction
     ret = 5000. * hidden_size ** (-0.5) * \
-          np.min([(step + 1) * warmup_steps ** (-1.5), (step + 1) ** (-0.5)])
+          cp.min([(step + 1) * warmup_steps ** (-1.5), (step + 1) ** (-0.5)])
     return ret * lr_base
 
 def export_model(saver, sess, path, name, as_text=False, gpu_id=None):
@@ -913,7 +914,7 @@ def scale_down(x):
     """
     x is complex/float
     """
-    scalor = np.max(abs(x))
+    scalor = cp.max(abs(x))
     x = x/(scalor+1e-8)
     return x, scalor
 
@@ -927,7 +928,7 @@ def pad_zeros(x, nx, ny):
     """
     pad first two dimensions with zeros
     """
-    tmp = np.zeros([nx, ny]+list(x.shape[2:]), dtype='complex64')
+    tmp = cp.zeros([nx, ny]+list(x.shape[2:]), dtype='complex64')
     shape = x.shape
     offset_x = (nx - shape[0])//2
     offset_y = (ny - shape[1])//2
@@ -938,7 +939,7 @@ def fill_zeros(x, nx, ny):
     """
     place zero between two continuous element of x for the first two dimensions
     """
-    tmp = np.zeros([nx, ny]+list(x.shape[2:]), dtype='complex64')
+    tmp = cp.zeros([nx, ny]+list(x.shape[2:]), dtype='complex64')
     shape = x.shape
     step_x = nx//shape[0]
     step_y = ny//shape[1]
@@ -954,13 +955,13 @@ def split_logits(x, logits, nr_mix):
     ls = list(logits.shape) # predicted distribution, e.g. (B,32,32,60)
     nr_mix = int(ls[-1] / 6) # here and below: unpacking the params of the mixture of logistics
     probs = scipy.special.softmax(logits[:,:,:,:nr_mix], axis=-1)
-    l = np.reshape(logits[:,:,:,nr_mix:], xs[:-1] + [5,nr_mix])
+    l = cp.reshape(logits[:,:,:,nr_mix:], xs[:-1] + [5,nr_mix])
     means = l[:,:,:,:2,:]
-    scales = np.exp(np.maximum(l[:,:,:,2:4,:], -7.))
-    coeffs = np.tanh(l[:,:,:,4:,:])
-    x = np.reshape(x, xs + [1]) + np.zeros(xs + [nr_mix]) # here and below: getting the means and adjusting them based on preceding sub-pixels
-    m2 = np.reshape(means[:,:,:,1,:] + coeffs[:, :, :, 0, :] * x[:, :, :, 0, :], [xs[0],xs[1],xs[2],1,nr_mix])
-    means = np.concatenate([np.reshape(means[:,:,:,0,:], [xs[0],xs[1],xs[2],1,nr_mix]), m2],axis=3)
+    scales = cp.exp(cp.maximum(l[:,:,:,2:4,:], -7.))
+    coeffs = cp.tanh(l[:,:,:,4:,:])
+    x = cp.reshape(x, xs + [1]) + cp.zeros(xs + [nr_mix]) # here and below: getting the means and adjusting them based on preceding sub-pixels
+    m2 = cp.reshape(means[:,:,:,1,:] + coeffs[:, :, :, 0, :] * x[:, :, :, 0, :], [xs[0],xs[1],xs[2],1,nr_mix])
+    means = cp.concatenate([cp.reshape(means[:,:,:,0,:], [xs[0],xs[1],xs[2],1,nr_mix]), m2],axis=3)
     return probs, means, scales
 
 def logistic_pdf(mean, scale, x_points):
@@ -975,17 +976,17 @@ def logistic_pdf(mean, scale, x_points):
         discrete pdf curves
     """
 
-    if not isinstance(mean, np.ndarray):
-        mean = np.array(mean)
-    if not isinstance(scale, np.ndarray):
-        scale = np.array(scale)
+    if not isinstance(mean, cp.ndarray):
+        mean = cp.array(mean)
+    if not isinstance(scale, cp.ndarray):
+        scale = cp.array(scale)
 
     shape = mean.shape
         
-    mean  = mean.reshape([np.prod(shape),1])
-    scale = scale.reshape([np.prod(shape),1])
+    mean  = mean.reshape([cp.prod(shape),1])
+    scale = scale.reshape([cp.prod(shape),1])
 
-    tmp = np.exp((mean-x_points[np.newaxis,:])/scale)
+    tmp = cp.exp((mean-x_points[cp.newaxis,:])/scale)
     f = tmp/(scale*(1+tmp)**2)
 
     return f.reshape(list(shape)+[len(x_points)])
@@ -1003,7 +1004,7 @@ def init_config(path):
     return recon_config, model_config
 
 def bit_mask(dims):
-    return np.sum(np.power(2, dims))
+    return cp.sum(cp.power(2, dims))
 
 def get_label(model_config, recon_config):
 
@@ -1011,13 +1012,13 @@ def get_label(model_config, recon_config):
         
         labelizer = get_labelizer(model_config['labels'])
         center_pos = calculate_center_pos(4,2)
-        binary_labels = np.array([], dtype='float32').reshape((0, len(labelizer.classes_)))
+        binary_labels = cp.array([], dtype='float32').reshape((0, len(labelizer.classes_)))
         for i in range(recon_config['batch_size']):
             if i in center_pos:
                 binary_label = labelizer.transform([['T2S','hku','center']]).astype('float32')
             else:
                 binary_label = labelizer.transform([['T2S','hku','outer']]).astype('float32')
-            binary_labels = np.concatenate([binary_labels, binary_label], axis=0)
+            binary_labels = cp.concatenate([binary_labels, binary_label], axis=0)
     else:
         binary_labels=None
 

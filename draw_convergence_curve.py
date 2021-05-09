@@ -12,6 +12,7 @@ from dncnn import dncnn
 import os
 import sys
 import numpy as np
+import cupy as cp
 import matplotlib.pyplot as plt
 plt.rcParams["font.family"] = "Times New Roman"
 import matplotlib as mpl
@@ -48,12 +49,12 @@ nx, ny, nr_coils = kspace.shape
 dims = (nx, ny)
 
 ### calculate ground truth
-coilsen1 = np.squeeze(utils.bart(1, 'ecalib -m1 -r20 -c0.0001', kspace[np.newaxis, ...]))
-coilsen = np.squeeze(utils.bart(1, 'caldir 20', kspace[np.newaxis, ...]))
+coilsen1 = cp.squeeze(utils.bart(1, 'ecalib -m1 -r20 -c0.0001', kspace[cp.newaxis, ...]))
+coilsen = cp.squeeze(utils.bart(1, 'caldir 20', kspace[cp.newaxis, ...]))
 
-img_coils = np.asfortranarray(ops.mifft2(kspace, dims), dtype='complex64')
-rss = np.asfortranarray(np.sum(np.multiply(img_coils, np.conj(coilsen)), axis=2), dtype='complex64')
-utils.save_img(abs(rss), fig_path+'/rss', np.min(abs(rss)), np.max(abs(rss)))
+img_coils = cp.asfortranarray(ops.mifft2(kspace, dims), dtype='complex64')
+rss = cp.asfortranarray(cp.sum(cp.multiply(img_coils, cp.conj(coilsen)), axis=2), dtype='complex64')
+utils.save_img(abs(rss), fig_path+'/rss', cp.min(abs(rss)), cp.max(abs(rss)))
 
 dims = (nx, ny, nr_coils)
 traj_opts = ('traj -D -r -x%d -y%d -s%d -G'%(nx, recon_config['spokes'], recon_config['GA']))
@@ -65,8 +66,8 @@ radial_ksp, nufft_op = py_bart.nufft(grid_size=(nx, ny, 1),
                                      inp=img_coils.reshape(nx, ny, 1, nr_coils),
                                      init=True)
 
-w = np.squeeze(utils.gen_weights(recon_config['spokes'], N=nx))
-weight = np.asfortranarray(np.stack([w for _ in range(nr_coils)], axis=-1), dtype='complex64')
+w = cp.squeeze(utils.gen_weights(recon_config['spokes'], N=nx))
+weight = cp.asfortranarray(cp.stack([w for _ in range(nr_coils)], axis=-1), dtype='complex64')
 
 nop = py_bart.ops(init=1,
                 o_size=(nx, ny, 1),
@@ -78,46 +79,46 @@ nop = py_bart.ops(init=1,
                 slice=1)
 
 x_ = py_bart.ops(init = 0, type=2, o_size=(nx, ny, 1), inp = radial_ksp, op= nop, slice = 1) # adjoint
-utils.save_img(abs(np.squeeze(x_)), os.path.join(fig_path, 'zero_filled'), np.min(abs(x_)), np.max(abs(x_)))
+utils.save_img(abs(cp.squeeze(x_)), os.path.join(fig_path, 'zero_filled'), cp.min(abs(x_)), cp.max(abs(x_)))
 
 
 def sense_kernel_non_cart(x_, img_k):
     tmp = py_bart.ops(init = 0,
                         type=1,
                         o_size=(nx, ny, 1),
-                        inp = np.asfortranarray(img_k, dtype='complex64'),
+                        inp = cp.asfortranarray(img_k, dtype='complex64'),
                         op= nop,
                         slice = 1)
-    img_k = img_k + np.squeeze(x_) - np.squeeze(tmp)
+    img_k = img_k + cp.squeeze(x_) - cp.squeeze(tmp)
     return img_k
 
 
 
 rss = abs(rss)/norm(rss)
 def recon_la(laa):
-    img_k = np.squeeze(x_)
+    img_k = cp.squeeze(x_)
     curve_net = []
     for i in range(100):
         img_k = sense_kernel_non_cart(x_, img_k)
         
         img_k, scalar = utils.scale_down(img_k)
         
-        img_k = img_k*(1-laa) + laa*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
+        img_k = img_k*(1-laa) + laa*cp.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[cp.newaxis, ...])})))
         img_k = utils.scale_up(img_k, scalar)
         psnr_net_radial = utils.psnr(abs(img_k)/norm(abs(img_k)), rss)
         ssim_net_radial = utils.ssim(abs(img_k)/norm(abs(img_k)), rss)
         curve_net.append([psnr_net_radial, ssim_net_radial])
-    return img_k, np.array(curve_net)
+    return img_k, cp.array(curve_net)
 
 img_k_1, curve_1 = recon_la(0.0)
 img_k_2, curve_2 = recon_la(0.1)
 img_k_3, curve_3 = recon_la(0.3)
 img_k_4, curve_4 = recon_la(1.)
 
-utils.save_img(abs(np.squeeze(img_k_1)), os.path.join(fig_path, 'img_k_1'), np.min(abs(img_k_1)), np.max(abs(img_k_1)))
-utils.save_img(abs(np.squeeze(img_k_2)), os.path.join(fig_path, 'img_k_2'), np.min(abs(img_k_2)), np.max(abs(img_k_2)))
-utils.save_img(abs(np.squeeze(img_k_3)), os.path.join(fig_path, 'img_k_3'), np.min(abs(img_k_3)), np.max(abs(img_k_3)))
-utils.save_img(abs(np.squeeze(img_k_4)), os.path.join(fig_path, 'img_k_4'), np.min(abs(img_k_4)), np.max(abs(img_k_4)))
+utils.save_img(abs(cp.squeeze(img_k_1)), os.path.join(fig_path, 'img_k_1'), cp.min(abs(img_k_1)), cp.max(abs(img_k_1)))
+utils.save_img(abs(cp.squeeze(img_k_2)), os.path.join(fig_path, 'img_k_2'), cp.min(abs(img_k_2)), cp.max(abs(img_k_2)))
+utils.save_img(abs(cp.squeeze(img_k_3)), os.path.join(fig_path, 'img_k_3'), cp.min(abs(img_k_3)), cp.max(abs(img_k_3)))
+utils.save_img(abs(cp.squeeze(img_k_4)), os.path.join(fig_path, 'img_k_4'), cp.min(abs(img_k_4)), cp.max(abs(img_k_4)))
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10,4), gridspec_kw={'width_ratios': [1, 1]})
 
@@ -125,19 +126,19 @@ title_size = 14
 label_size = 12
 itera = 100
 
-ax1.plot(np.arange(0,itera), curve_1[:,0], label="$\lambda=0.0$")
-ax1.plot(np.arange(0,itera), curve_2[:,0], label="$\lambda=0.1$")
-ax1.plot(np.arange(0,itera), curve_3[:,0], label="$\lambda=0.3$")
-ax1.plot(np.arange(0,itera), curve_4[:,0], label="$\lambda=1.0$")
+ax1.plot(cp.arange(0,itera), curve_1[:,0], label="$\lambda=0.0$")
+ax1.plot(cp.arange(0,itera), curve_2[:,0], label="$\lambda=0.1$")
+ax1.plot(cp.arange(0,itera), curve_3[:,0], label="$\lambda=0.3$")
+ax1.plot(cp.arange(0,itera), curve_4[:,0], label="$\lambda=1.0$")
 
 ax1.set_xlabel('iteration', fontsize=label_size)
 ax1.set_ylabel('PSNR', fontsize=label_size)
 ax1.grid(color='gray', linestyle='dashed')
 
-ax2.plot(np.arange(0,itera), curve_1[:,1], label="$\lambda=0.0$")
-ax2.plot(np.arange(0,itera), curve_2[:,1], label="$\lambda=0.1$")
-ax2.plot(np.arange(0,itera), curve_3[:,1], label="$\lambda=0.3$")
-ax2.plot(np.arange(0,itera), curve_4[:,1], label="$\lambda=1.0$")
+ax2.plot(cp.arange(0,itera), curve_1[:,1], label="$\lambda=0.0$")
+ax2.plot(cp.arange(0,itera), curve_2[:,1], label="$\lambda=0.1$")
+ax2.plot(cp.arange(0,itera), curve_3[:,1], label="$\lambda=0.3$")
+ax2.plot(cp.arange(0,itera), curve_4[:,1], label="$\lambda=1.0$")
 
 ax2.set_xlabel('iteration', fontsize=label_size)
 ax2.set_ylabel('SSIM', fontsize=label_size)

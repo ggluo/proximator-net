@@ -13,6 +13,7 @@ tf.disable_eager_execution()
 
 import time
 import numpy as np
+import cupy as cp
 import argparse
 
 from datetime import datetime
@@ -53,7 +54,7 @@ xs_clean = [tf.placeholder(tf.float32,
                    ) for _ in range(config['nr_gpu'])]
 
 tf_lr = tf.placeholder(tf.float32, shape=[])
-sigmas = np.linspace(config['sigma_0'], config['sigma_1'], config['sigma_steps'])
+sigmas = cp.linspace(config['sigma_0'], config['sigma_1'], config['sigma_steps'])
 ins_net = dncnn(chns=2, nr_layers=config['nr_layers'], nr_filters=config['nr_filters'], nr_classes=len(sigmas))
 init_pass = ins_net.forward(xs[0], hs[0], init=True)
 ins_proximator = proximator(ins_net, chns=2, iteration=config['iteration'])
@@ -180,13 +181,13 @@ while True:
     ls = config['lr']
 
     batch = train_queue.get()
-    labels = np.random.randint(0, len(sigmas), (batch.shape[0]), dtype='int32')
+    labels = cp.random.randint(0, len(sigmas), (batch.shape[0]), dtype='int32')
     
-    xc = np.split(batch, config['nr_gpu'])
+    xc = cp.split(batch, config['nr_gpu'])
     # sigma=[]
-    noisy_batch = utils.noise(shape=batch.shape)*sigmas[labels][:,np.newaxis, np.newaxis, np.newaxis] + batch
-    xn = np.split(noisy_batch, config['nr_gpu'])
-    labels_l = np.split(labels, config['nr_gpu'])
+    noisy_batch = utils.noise(shape=batch.shape)*sigmas[labels][:,cp.newaxis, cp.newaxis, cp.newaxis] + batch
+    xn = cp.split(noisy_batch, config['nr_gpu'])
+    labels_l = cp.split(labels, config['nr_gpu'])
     
     feed_dict = {xs[i]: xn[i] for i in range(config['nr_gpu'])}
     feed_dict.update({xs_clean[i]: xc[i] for i in range(config['nr_gpu'])})
@@ -204,12 +205,12 @@ while True:
         while True:
 
             test_batch = test_queue.get()
-            xc = np.split(test_batch, config['nr_gpu'])
-            labels = np.random.randint(0, len(sigmas), (batch.shape[0]), dtype='int32')
+            xc = cp.split(test_batch, config['nr_gpu'])
+            labels = cp.random.randint(0, len(sigmas), (batch.shape[0]), dtype='int32')
             
-            test_batch = utils.noise(shape=test_batch.shape)*sigmas[labels][:,np.newaxis, np.newaxis, np.newaxis] + test_batch
-            xn = np.split(test_batch, config['nr_gpu'])
-            labels_l = np.split(labels, config['nr_gpu'])
+            test_batch = utils.noise(shape=test_batch.shape)*sigmas[labels][:,cp.newaxis, cp.newaxis, cp.newaxis] + test_batch
+            xn = cp.split(test_batch, config['nr_gpu'])
+            labels_l = cp.split(labels, config['nr_gpu'])
             
             test_dict = {xs[i]:xn[i] for i in range(config['nr_gpu'])}
             test_dict.update({xs_clean[i]:xc[i]  for i in range(config['nr_gpu'])})

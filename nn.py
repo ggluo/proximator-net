@@ -1,5 +1,6 @@
 import tensorflow.compat.v1 as tf
 import numpy as np
+import cupy as cp
 from tf_slim import add_arg_scope
 import math
 from tf_slim.layers import layer_norm
@@ -251,7 +252,7 @@ def deconv2d(x_, num_filters, filter_size=[3,3], stride=[1,1], pad='SAME', nonli
 def nin(x, num_units, use_bias=True, nonlinearity=None, **kwargs):
     """ a network in network layer (1x1 CONV) """
     s = int_shape(x)
-    x = tf.reshape(x, [np.prod(s[:-1]),s[-1]])
+    x = tf.reshape(x, [cp.prod(s[:-1]),s[-1]])
     x = dense(x, num_units, use_bias=use_bias, **kwargs)
     if nonlinearity is not None:
         x = nonlinearity(x)

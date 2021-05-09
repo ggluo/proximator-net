@@ -9,6 +9,7 @@ from dncnn import dncnn
 
 import os
 import numpy as np
+import cupy as cp
 import matplotlib.pyplot as plt
 from scipy.linalg import norm
 from scipy.io import loadmat
@@ -46,17 +47,17 @@ def recon(kspace_path, mask):
     nr_original_coils = recon_config['nr_original_coils']
     nr_comb_coils = recon_config['nr_comb_coils']
 
-    und_ksp = mask[..., np.newaxis] * ksp
+    und_ksp = mask[..., cp.newaxis] * ksp
     
-    #coilsen = utils.bart(1, 'ecalib -m1 -r20 -c0.001', und_ksp[np.newaxis, ...])
-    coilsen = utils.bart(1, 'caldir 20', und_ksp[np.newaxis, ...])
-    coilsen = np.squeeze(coilsen)
-    l1_recon = utils.bart(1, 'pics -R W:3:0:%f -d5 -i100 -e'%(recon_config['bart_l1_lambda']),  und_ksp[:,:,np.newaxis,...], coilsen[:,:,np.newaxis,:]) 
+    #coilsen = utils.bart(1, 'ecalib -m1 -r20 -c0.001', und_ksp[cp.newaxis, ...])
+    coilsen = utils.bart(1, 'caldir 20', und_ksp[cp.newaxis, ...])
+    coilsen = cp.squeeze(coilsen)
+    l1_recon = utils.bart(1, 'pics -R W:3:0:%f -d5 -i100 -e'%(recon_config['bart_l1_lambda']),  und_ksp[:,:,cp.newaxis,...], coilsen[:,:,cp.newaxis,:]) 
     
     def sense_kernel_cart(x_, img_k):
         tmp = ops.A_cart(img_k, coilsen, mask, [nx, ny])
         tmp = ops.AT_cart(tmp, coilsen, mask, [nx, ny])
-        img_k = img_k + np.squeeze(x_) - np.squeeze(tmp)
+        img_k = img_k + cp.squeeze(x_) - cp.squeeze(tmp)
         return img_k
 
     zero_filled = ops.AT_cart(und_ksp, coilsen, mask, [nx, ny])
@@ -67,8 +68,8 @@ def recon(kspace_path, mask):
         img_k = sense_kernel_cart(zero_filled, img_k)
         
         img_k, scalar = utils.scale_down(img_k)
-        img_k = img_k+ 0.001*np.random.randn(256, 256)
-        img_k = img_k*0.8 + 0.2*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
+        img_k = img_k+ 0.001*cp.random.randn(256, 256)
+        img_k = img_k*0.8 + 0.2*cp.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[cp.newaxis, ...])})))
 
         img_k = utils.scale_up(img_k, scalar)
         
@@ -109,7 +110,7 @@ results = {'zero_filled_1D': zero_filled_1D,
            'mask_1D': mask_1D,
            'mask_2D': mask_2D,
            'rss': rss}
-np.savez(fig_path+'/results_images', results)
+cp.savez(fig_path+'/results_images', results)
 
 metrics = { 'psnr_zero_1D':psnr_zero_1D,
             'ssim_zero_1D':ssim_zero_1D,
@@ -123,11 +124,11 @@ metrics = { 'psnr_zero_1D':psnr_zero_1D,
             'psnr_net_2D':psnr_net_2D,
             'ssim_l1_2D':ssim_l1_2D,
             'ssim_net_2D':ssim_net_2D}
-np.savez(fig_path+'/results_metrics', metrics)
+cp.savez(fig_path+'/results_metrics', metrics)
 
 for item in results.keys():
     tmp = results[item]
-    utils.save_img(abs(tmp), fig_path+'/'+item, np.min(abs(tmp)), np.max(abs(tmp)))
+    utils.save_img(abs(tmp), fig_path+'/'+item, cp.min(abs(tmp)), cp.max(abs(tmp)))
 
 text_file = open(fig_path+"/metrics.txt", "w")
 for item in metrics.keys():

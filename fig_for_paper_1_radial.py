@@ -12,6 +12,7 @@ from dncnn import dncnn
 import os
 import sys
 import numpy as np
+import cupy as cp
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 mpl.rcParams['text.usetex'] = True
@@ -47,12 +48,12 @@ nx, ny, nr_coils = kspace.shape
 dims = (nx, ny)
 
 ### calculate ground truth
-coilsen1 = np.squeeze(utils.bart(1, 'ecalib -m1 -r20 -c0.0001', kspace[np.newaxis, ...]))
-coilsen = np.squeeze(utils.bart(1, 'caldir 20', kspace[np.newaxis, ...]))
+coilsen1 = cp.squeeze(utils.bart(1, 'ecalib -m1 -r20 -c0.0001', kspace[cp.newaxis, ...]))
+coilsen = cp.squeeze(utils.bart(1, 'caldir 20', kspace[cp.newaxis, ...]))
 
-img_coils = np.asfortranarray(ops.mifft2(kspace, dims), dtype='complex64')
-rss = np.asfortranarray(np.sum(np.multiply(img_coils, np.conj(coilsen)), axis=2), dtype='complex64')
-utils.save_img(abs(rss), fig_path+'/rss', np.min(abs(rss)), np.max(abs(rss)))
+img_coils = cp.asfortranarray(ops.mifft2(kspace, dims), dtype='complex64')
+rss = cp.asfortranarray(cp.sum(cp.multiply(img_coils, cp.conj(coilsen)), axis=2), dtype='complex64')
+utils.save_img(abs(rss), fig_path+'/rss', cp.min(abs(rss)), cp.max(abs(rss)))
 
 dims = (nx, ny, nr_coils)
 traj_opts = ('traj -D -r -x%d -y%d -s%d -G'%(nx, recon_config['spokes'], recon_config['GA']))
@@ -64,8 +65,8 @@ radial_ksp, nufft_op = py_bart.nufft(grid_size=(nx, ny, 1),
                                      inp=img_coils.reshape(nx, ny, 1, nr_coils),
                                      init=True)
 
-w = np.squeeze(utils.gen_weights(recon_config['spokes'], N=nx))
-weight = np.asfortranarray(np.stack([w for _ in range(nr_coils)], axis=-1), dtype='complex64')
+w = cp.squeeze(utils.gen_weights(recon_config['spokes'], N=nx))
+weight = cp.asfortranarray(cp.stack([w for _ in range(nr_coils)], axis=-1), dtype='complex64')
 
 nop = py_bart.ops(init=1,
                 o_size=(nx, ny, 1),
@@ -77,37 +78,37 @@ nop = py_bart.ops(init=1,
                 slice=1)
 
 x_ = py_bart.ops(init = 0, type=2, o_size=(nx, ny, 1), inp = radial_ksp, op= nop, slice = 1) # adjoint
-utils.save_img(abs(np.squeeze(x_)), os.path.join(fig_path, 'zero_filled'), np.min(abs(x_)), np.max(abs(x_)))
+utils.save_img(abs(cp.squeeze(x_)), os.path.join(fig_path, 'zero_filled'), cp.min(abs(x_)), cp.max(abs(x_)))
 
-l1_recon = utils.bart(1, 'pics -R W:3:0:%f -d5 -i100 -e -t'%(recon_config['bart_l1_lambda']), traj, radial_ksp, coilsen1[:,:,np.newaxis,:])
-utils.save_img(abs(np.squeeze(l1_recon)), os.path.join(fig_path, 'l1_recon'), np.min(abs(l1_recon)), np.max(abs(l1_recon)))
+l1_recon = utils.bart(1, 'pics -R W:3:0:%f -d5 -i100 -e -t'%(recon_config['bart_l1_lambda']), traj, radial_ksp, coilsen1[:,:,cp.newaxis,:])
+utils.save_img(abs(cp.squeeze(l1_recon)), os.path.join(fig_path, 'l1_recon'), cp.min(abs(l1_recon)), cp.max(abs(l1_recon)))
 
 def sense_kernel_non_cart(x_, img_k):
     tmp = py_bart.ops(init = 0,
                         type=1,
                         o_size=(nx, ny, 1),
-                        inp = np.asfortranarray(img_k, dtype='complex64'),
+                        inp = cp.asfortranarray(img_k, dtype='complex64'),
                         op= nop,
                         slice = 1)
-    img_k = img_k + np.squeeze(x_) - np.squeeze(tmp)
+    img_k = img_k + cp.squeeze(x_) - cp.squeeze(tmp)
     return img_k
 
-img_k = np.squeeze(x_)
+img_k = cp.squeeze(x_)
 
 for i in range(recon_config['sense_iter']):
     img_k = sense_kernel_non_cart(x_, img_k)
     
     img_k, scalar = utils.scale_down(img_k)
     
-    img_k = img_k*0.9 + 0.1*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
+    img_k = img_k*0.9 + 0.1*cp.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[cp.newaxis, ...])})))
     
     img_k = utils.scale_up(img_k, scalar)
-    utils.save_img(abs(img_k), fig_path+'/img_k_'+str(i), np.min(abs(img_k)), np.max(abs(img_k)))
+    utils.save_img(abs(img_k), fig_path+'/img_k_'+str(i), cp.min(abs(img_k)), cp.max(abs(img_k)))
 
 
 
 rss = abs(rss)/norm(rss)
-x_ = np.squeeze(x_)
+x_ = cp.squeeze(x_)
 psnr_zero_radial= utils.psnr(abs(x_)/norm(abs(x_)), rss)
 psnr_l1_radial= utils.psnr(abs(l1_recon)/norm(abs(l1_recon)), rss)
 psnr_net_radial = utils.psnr(abs(img_k)/norm(abs(img_k)), rss)
@@ -122,7 +123,7 @@ metrics = {'psnr_zero_radial': psnr_zero_radial,
            'ssim_l1_radial': ssim_l1_radial,
            'ssim_net_radial': ssim_net_radial}
 
-np.savez(fig_path+'/results_metrics', metrics)
+cp.savez(fig_path+'/results_metrics', metrics)
 
 text_file = open(fig_path+"/metrics.txt", "w")
 for item in metrics.keys():
@@ -139,7 +140,7 @@ for i in range(100):
     
     img_k, scalar = utils.scale_down(img_k)
     
-    img_k = img_k*(1-la) + la*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
+    img_k = img_k*(1-la) + la*cp.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[cp.newaxis, ...])})))
     img_k = utils.scale_up(img_k, scalar)
     psnr_net_radial = utils.psnr(abs(img_k)/norm(abs(img_k)), rss)
     ssim_net_radial = utils.ssim(abs(img_k)/norm(abs(img_k)), rss)
@@ -154,14 +155,14 @@ for i in range(100):
     
     img_k, scalar = utils.scale_down(img_k)
     
-    img_k = img_k*(1-la) + la*np.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[np.newaxis, ...])})))
+    img_k = img_k*(1-la) + la*cp.squeeze(utils.float2cplx(sess.run(op_prox, {xs: utils.cplx2float(img_k[cp.newaxis, ...])})))
     img_k = utils.scale_up(img_k, scalar)
     psnr_net_radial = utils.psnr(abs(img_k)/norm(abs(img_k)), rss)
     ssim_net_radial = utils.ssim(abs(img_k)/norm(abs(img_k)), rss)
     curve_s.append([psnr_net_radial, ssim_net_radial])
 
-curve_s = np.array(curve_s)
-curve_net = np.array(curve_net)
+curve_s = cp.array(curve_s)
+curve_net = cp.array(curve_net)
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10,4), gridspec_kw={'width_ratios': [1, 1]})
 
@@ -169,14 +170,14 @@ title_size = 14
 label_size = 12
 itera = 100
 
-ax1.plot(np.arange(0,itera), curve_net[:,0], label='lamda=0.1')
-ax1.plot(np.arange(0,itera), curve_s[:,0], label='lamda=0')
+ax1.plot(cp.arange(0,itera), curve_net[:,0], label='lamda=0.1')
+ax1.plot(cp.arange(0,itera), curve_s[:,0], label='lamda=0')
 ax1.set_xlabel('iteration', fontsize=label_size)
 ax1.set_ylabel('PSNR', fontsize=label_size)
 ax1.grid(color='gray', linestyle='dashed')
 
-ax2.plot(np.arange(0,itera), curve_net[:,1], label="lamda=0.1")
-ax2.plot(np.arange(0,itera), curve_s[:,1], label='lamda=0')
+ax2.plot(cp.arange(0,itera), curve_net[:,1], label="lamda=0.1")
+ax2.plot(cp.arange(0,itera), curve_s[:,1], label='lamda=0')
 ax2.set_xlabel('iteration', fontsize=label_size)
 ax2.set_ylabel('SSIM', fontsize=label_size)
 ax2.grid(color='gray', linestyle='dashed')
